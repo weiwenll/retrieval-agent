@@ -6,6 +6,7 @@ import googlemaps
 def search_places(location, radius=20000, keyword=None, language='en', max_pages=3, min_rating=0.0):
     """
     Search Google Places nearby with pagination support using the old/legacy API.
+    Returns RAW API data without formatting.
     
     Args:
         location: (lat, lng) tuple or dict with 'lat'/'lng' keys  
@@ -16,7 +17,7 @@ def search_places(location, radius=20000, keyword=None, language='en', max_pages
         min_rating: minimum rating filter (0.0-5.0)
     
     Returns:
-        List of formatted place dictionaries (up to 60 results)
+        List of raw place dictionaries from Google Places API
     """
     api_key = os.getenv('GOOGLE_MAPS_API_KEY')
     if not api_key:
@@ -41,14 +42,9 @@ def search_places(location, radius=20000, keyword=None, language='en', max_pages
     if radius <= 0 or radius > 50000:
         raise ValueError("radius must be between 1 and 50000 meters")
     
-    all_results = []
     raw_results = []
     page_token = None
     pages_fetched = 0
-    
-    # print(f"Searching near {location_tuple} with radius {radius}m")
-    # if keyword:
-    #     print(f"Keyword: '{keyword}'")
     
     # Fetch pages with pagination
     while pages_fetched < max_pages:
@@ -80,78 +76,27 @@ def search_places(location, radius=20000, keyword=None, language='en', max_pages
         page_token = response.get('next_page_token')
         pages_fetched += 1
         
-        # print(f"Page {pages_fetched}: Got {len(page_results)} results")
-        
         if not page_token:
             print("No more pages available")
             break
     
-    # Filter by rating and format results
+    # Filter by rating - return raw data
+    filtered_results = []
     for place in raw_results:
         # Check rating filter
         rating = place.get('rating', 0)
         if rating < min_rating:
             continue
         
-        # Extract location data
-        geometry = place.get('geometry', {})
-        location_data = geometry.get('location', {})
-        
-        # Extract opening hours (complex format, set to null for now)
-        opening_hours = None
-        if place.get('opening_hours'):
-            opening_hours = {
-                "monday": None,
-                "tuesday": None,
-                "wednesday": None,
-                "thursday": None,
-                "friday": None,
-                "saturday": None,
-                "sunday": None
-            }
-        
-        # Get types and primary type
-        types = place.get('types', [])
-        primary_type = types[0] if types else None
-        
-        formatted_place = {
-            "place_id": place.get('place_id'),
-            "name": place.get('name'),
-            "type": primary_type,
-            "cost_sgd": place.get('price_level'),  # Google uses 0-4 scale
-            "onsite_co2_kg": None,  # Not available from basic API
-            "geo": {
-                "latitude": location_data.get('lat'),
-                "longitude": location_data.get('lng')
-            } if location_data else None,
-            "geo_cluster_id": None,  # Would need custom logic
-            "address": place.get('formatted_address') or place.get('vicinity'),
-            "nearest_mrt": None,  # Would need additional API calls
-            "opening_hours": opening_hours,
-            "duration_recommended_minutes": None,  # Not available from basic API
-            "ticket_price_sgd": {
-                "adult": None,
-                "child": None,
-                "senior": None
-            },
-            "vegetarian_friendly": None,  # Would need details API call
-            "low_carbon_score": None,  # Custom metric
-            "description": None,  # Would need details API call
-            "links": {
-                "official": None,  # Would need details API call
-                "reviews": f"https://www.google.com/maps/place/?q=place_id:{place.get('place_id')}" if place.get('place_id') else None
-            },
-            "tags": types,  # Use Google's types as tags
-            "rating": rating,  # Include rating for reference
-            "user_ratings_total": place.get('user_ratings_total')
-        }
-        all_results.append(formatted_place)
+        # Return the raw place data from Google API
+        filtered_results.append(place)
     
-    return all_results
+    return filtered_results
 
 def search_multiple_keywords(location, keywords, radius=20000, max_pages=2, min_rating=4.0):
     """
-    Search for multiple keywords and return formatted results with deduplication.
+    Search for multiple keywords and return raw results with deduplication.
+    Returns RAW API data without formatting.
     
     Args:
         location: (lat, lng) tuple or dict with 'lat'/'lng' keys
@@ -161,7 +106,7 @@ def search_multiple_keywords(location, keywords, radius=20000, max_pages=2, min_
         min_rating: minimum rating filter
     
     Returns:
-        List of unique formatted places
+        List of unique raw places from Google API
     """
     all_results = []
     seen_place_ids: Set[str] = set()
@@ -170,7 +115,8 @@ def search_multiple_keywords(location, keywords, radius=20000, max_pages=2, min_
         print(f"\n=== Searching for: '{keyword}' ===")
         
         try:
-            results = search_nearby(
+            # Use search_places instead of search_nearby (which doesn't exist)
+            results = search_places(
                 location=location,
                 radius=radius,
                 keyword=keyword,
@@ -198,6 +144,7 @@ def search_multiple_keywords(location, keywords, radius=20000, max_pages=2, min_
 def get_place_details(place_ids, fields=None, details_per_second=5.0, max_retries=3, language='en'):
     """
     Fetch detailed information for places using the old Places API.
+    Returns RAW API data without formatting.
     
     Args:
         place_ids: List of place IDs to get details for
@@ -207,7 +154,7 @@ def get_place_details(place_ids, fields=None, details_per_second=5.0, max_retrie
         language: Language for results
     
     Returns:
-        Dict mapping {place_id: details_dict}
+        Dict mapping {place_id: raw_details_dict}
     """
     api_key = os.getenv('GOOGLE_MAPS_API_KEY')
     if not api_key:
@@ -219,7 +166,7 @@ def get_place_details(place_ids, fields=None, details_per_second=5.0, max_retrie
     if fields is None:
         fields = [
             'name', 'formatted_address', 'geometry', 'opening_hours',
-            'rating', 'website', 'price_level', 'type', 'url'
+            'rating', 'website', 'price_level', 'type'
         ]
     
     details_by_id = {}
@@ -238,6 +185,7 @@ def get_place_details(place_ids, fields=None, details_per_second=5.0, max_retrie
                     fields=fields,
                     language=language
                 )
+                # Return raw response from API
                 details_by_id[place_id] = response.get('result', {})
                 break  # Success
                 
