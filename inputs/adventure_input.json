@@ -1,0 +1,20 @@
+{
+  "trip_dates": {
+    "start_date": "2025-01-15",
+    "end_date": "2025-01-20"
+  },
+  "duration_days": 5,
+  "budget": 3500,
+  "pace": "active",
+  "optional": {
+    "eco_preferences": "medium",
+    "dietary_preferences": "omnivore",
+    "interests": ["adventure", "heritage", "nightlife", "shopping"],
+    "accommodation_location": {
+      "lat": 1.2966,
+      "lon": 103.8547,
+      "neighborhood": "Marina Bay"
+    },
+    "group_type": "couple"
+  }
+}

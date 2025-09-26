@@ -1,0 +1,20 @@
+{
+  "trip_dates": {
+    "start_date": "2025-12-10",
+    "end_date": "2025-12-15"
+  },
+  "duration_days": 5,
+  "budget": 2600,
+  "pace": "relaxed",
+  "optional": {
+    "eco_preferences": "high",
+    "dietary_preferences": "vegan",
+    "interests": ["gardens", "adventure", "cultural_shows", "riverfronts"],
+    "accommodation_location": {
+      "lat": 1.2931,
+      "lon": 103.8558,
+      "neighborhood": "Clarke Quay"
+    },
+    "group_type": "family"
+  }
+}
