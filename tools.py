@@ -1,9 +1,11 @@
 import os
 import time
+from typing import Optional
 from venv import logger
 import googlemaps
+import wikipedia
 
-def search_places(location, radius=20000, keyword=None, language='en', max_pages=3, min_rating=0.0):
+def search_places(location, radius=2000, keyword=None, language='en', max_pages=1, min_rating=0.0):
     """
     Search Google Places nearby with pagination support using the old/legacy API.
     Returns RAW API data without formatting.
@@ -93,7 +95,7 @@ def search_places(location, radius=20000, keyword=None, language='en', max_pages
     
     return filtered_results
 
-def search_multiple_keywords(location, keywords, radius=20000, max_pages=2, min_rating=4.0):
+def search_multiple_keywords(location, keywords, radius=2000, max_pages=1, min_rating=4.0):
     """
     Search for multiple keywords and return raw results with deduplication.
     Returns RAW API data without formatting.
@@ -209,3 +211,19 @@ def get_place_details(place_ids, fields=None, details_per_second=5.0, max_retrie
         time.sleep(sleep_between)
     
     return details_by_id
+
+def search_wikipedia(search_term: str) -> Optional[str]:
+    """
+    Search Wikipedia and return the first two sentences of the best match.
+    """
+    try:
+        results = wikipedia.search(search_term)
+        if not results:
+            return None
+
+        first_result = results[0]
+        return wikipedia.summary(first_result, auto_suggest=False)
+
+    except Exception as e:
+        print(f"Wikipedia search error: {e}")
+        return None
