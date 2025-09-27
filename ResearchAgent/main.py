@@ -9,6 +9,7 @@ import os
 import sys
 import json
 import logging
+import math
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 
@@ -79,10 +80,13 @@ def load_input_file(file_path: str) -> dict:
 
 # Test with different input files
 print("Available input files:")
-for file in os.listdir('inputs'):
-    if file.endswith('.json'):
-        print(f"  inputs/{file}")
-        
+try:
+    for file in os.listdir('../inputs'):
+        if file.endswith('.json'):
+            print(f"  ../inputs/{file}")
+except FileNotFoundError:
+    print("No inputs directory found")
+
 # ## Places Research Agent - Reasoning Implementation
 # - Handles pure reasoning and analytical thinking
 # - Executes API calls through tools (search_places, search_multiple_keywords, get_place_details)
@@ -903,44 +907,229 @@ Example format:
             - Generate engaging descriptions for tourists.
             - Set geo_cluster_id based on coordinates (lat>1.35→north, lat<1.35→south, lng>103.8→east, lng<103.8→west, central if between).
             """.strip()
-            
+
+class PlacesClusteringAgent:
+    """
+    Agent for clustering attractions geographically and thematically for optimal travel planning.
+    Groups places by geo_cluster_id and calculates travel connections with accommodation.
+    """
+
+    def __init__(self):
+        self.accommodation_location = None
+        self.cluster_mapping = {
+            "central": {"name": "Central Singapore"},
+            "north": {"name": "Northern Singapore"},
+            "south": {"name": "Southern Singapore"},
+            "east": {"name": "Eastern Singapore"},
+            "west": {"name": "Western Singapore"}
+        }
+
+    def cluster_places(self, places_data: Dict, accommodation_location: Dict) -> Dict:
+        """
+        Cluster places geographically and add travel connections.
+
+        Args:
+            places_data: Formatted places data from PlacesResearchFormattingAgent
+            accommodation_location: Dict with lat, lng of accommodation
+
+        Returns:
+            Clustered data with travel connections and modes
+        """
+        self.accommodation_location = accommodation_location
+        places = places_data.get('formatted_places', [])
+
+        if not places:
+            return self._create_empty_clusters_response(places_data)
+
+        # Group places by geo_cluster_id
+        clusters = self._group_by_geo_cluster(places)
+
+        # Calculate travel connections for each cluster
+        clustered_results = []
+        for cluster_id, cluster_places in clusters.items():
+            cluster_data = self._create_cluster_data(cluster_id, cluster_places)
+            clustered_results.append(cluster_data)
+
+        # Sort clusters by priority (central first)
+        clustered_results.sort(key=lambda x: self.cluster_mapping.get(x['cluster_id'], {}).get('priority', 999))
+
+        return {
+            "reasoning": places_data.get('reasoning'),
+            "places_found": places_data.get('places_found', len(places)),
+            "total_clusters": len(clustered_results),
+            "accommodation": {
+                "location": accommodation_location,
+                "geo_cluster_id": self._calculate_geo_cluster_for_coords(
+                    accommodation_location.get('lat'),
+                    accommodation_location.get('lng') or accommodation_location.get('lon')
+                )
+            },
+            "clustered_places": clustered_results
+        }
+
+    def _group_by_geo_cluster(self, places: List[Dict]) -> Dict[str, List[Dict]]:
+        """Group places by their geo_cluster_id."""
+        clusters = {}
+        for place in places:
+            cluster_id = place.get('geo_cluster_id', 'unknown')
+            if cluster_id not in clusters:
+                clusters[cluster_id] = []
+            clusters[cluster_id].append(place)
+        return clusters
+
+    def _create_cluster_data(self, cluster_id: str, places: List[Dict]) -> Dict:
+        """Create cluster data with travel connections."""
+        cluster_info = self.cluster_mapping.get(cluster_id, {"name": f"Unknown Cluster ({cluster_id})", "priority": 999})
+
+        # Calculate travel connections for each place
+        places_with_travel = []
+        for place in places:
+            place_with_travel = place.copy()
+            travel_info = self._calculate_travel_to_place(place)
+            place_with_travel['travel_from_accommodation'] = travel_info
+            places_with_travel.append(place_with_travel)
+
+        # Sort places within cluster by distance from accommodation
+        places_with_travel.sort(key=lambda x: x['travel_from_accommodation']['distance_km'])
+
+        return {
+            "cluster_id": cluster_id,
+            "cluster_name": cluster_info["name"],
+            "places_count": len(places_with_travel),
+            "average_distance_km": round(sum(p['travel_from_accommodation']['distance_km'] for p in places_with_travel) / len(places_with_travel), 2),
+            "recommended_travel_mode": self._get_cluster_recommended_mode(places_with_travel),
+            "places": places_with_travel
+        }
+
+    def _calculate_travel_to_place(self, place: Dict) -> Dict:
+        """Calculate travel information from accommodation to place."""
+        place_geo = place.get('geo', {})
+        place_lat = place_geo.get('latitude')
+        place_lng = place_geo.get('longitude')
+
+        if not place_lat or not place_lng or not self.accommodation_location:
+            return self._create_default_travel_info()
+
+        # Calculate distance using Haversine formula
+        # Handle both 'lng' and 'lon' formats for accommodation location
+        acc_lng = self.accommodation_location.get('lng') or self.accommodation_location.get('lon')
+        distance_km = self._haversine_distance(
+            self.accommodation_location.get('lat'),
+            acc_lng,
+            place_lat,
+            place_lng
+        )
+
+        # Determine travel modes and times
+        travel_modes = self._calculate_travel_modes(distance_km)
+
+        return {
+            "distance_km": round(distance_km, 2),
+            "travel_modes": travel_modes,
+            "recommended_mode": self._get_recommended_mode(distance_km)
+        }
+
+    def _haversine_distance(self, lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+        """Calculate distance between two points using Haversine formula."""
+        # Convert to radians
+        lat1, lng1, lat2, lng2 = map(math.radians, [lat1, lng1, lat2, lng2])
+
+        # Haversine formula
+        dlat = lat2 - lat1
+        dlng = lng2 - lng1
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng/2)**2
+        c = 2 * math.asin(math.sqrt(a))
+
+        # Earth radius in kilometers
+        earth_radius_km = 6371
+        return earth_radius_km * c
+
+    def _get_cluster_recommended_mode(self, places: List[Dict]) -> str:
+        """Get recommended mode for entire cluster based on distances."""
+        if not places:
+            return "MRT"
+
+        avg_distance = sum(p['travel_from_accommodation']['distance_km'] for p in places) / len(places)
+        return self._get_recommended_mode(avg_distance)
+
+    def _calculate_geo_cluster_for_coords(self, lat: float, lng: float) -> str:
+        """Calculate geo cluster for given coordinates."""
+        if not lat or not lng:
+            return "unknown"
+
+        # Singapore bounds check
+        if not (1.1 <= lat <= 1.5 and 103.6 <= lng <= 104.1):
+            return "unknown"
+
+        # Cluster logic for Singapore
+        if 1.25 <= lat <= 1.35 and 103.7 <= lng <= 103.9:
+            return "central"
+        elif lat > 1.35:
+            return "north"
+        elif lat < 1.35:
+            return "south"
+        elif lng > 103.8:
+            return "east"
+        else:
+            return "west"
+
+    def _create_empty_clusters_response(self, places_data: Dict) -> Dict:
+        """Create response when no places to cluster."""
+        return {
+            "reasoning": places_data.get('reasoning'),
+            "places_found": 0,
+            "total_clusters": 0,
+            "accommodation": {
+                "location": self.accommodation_location,
+                "geo_cluster_id": "unknown"
+            },
+            "clustered_places": []
+        }
+
 def run_agentic_workflow(input_data):
-    """Run agent workflow: coordinate between reasoning and formatting agents."""
-    
+    """Run agent workflow: coordinate between reasoning, formatting, and clustering agents."""
+
     # Initialize agents
     reasoning_agent = PlacesResearchReasoningAgent()
     formatting_agent = PlacesResearchFormattingAgent()
-    
+    clustering_agent = PlacesClusteringAgent()
+
     # Create prompt for reasoning agent with input data
     prompt = f"""
     I need to find attractions for a trip to Singapore with the following requirements:
-    
+
     Trip Details:
     - Duration: {input_data.get('duration_days', 1)} days
     - Pace: {input_data.get('pace', 'moderate')}
     - Budget: ${input_data.get('budget', 0)}
-    
+
     Optional Preferences:
     - Interests: {input_data.get('optional', {}).get('interests', [])}
     - Accommodation Location: {input_data.get('optional', {}).get('accommodation_location', {})}
-    
+
     Please search for appropriate attractions near the accommodation location based on these preferences.
     """
-    
+
     # Get raw data from reasoning agent
     reasoning_result = reasoning_agent(prompt)
-    
+
     # Format the results using formatting agent
     formatted_result = formatting_agent.format_response(reasoning_result)
-    
-    return formatted_result
+
+    # Get accommodation location for clustering
+    accommodation_location = input_data.get('optional', {}).get('accommodation_location', {})
+
+    # Cluster the places geographically with travel connections
+    clustered_result = clustering_agent.cluster_places(formatted_result, accommodation_location)
+
+    return clustered_result
 
 # Load input data
-input_file = 'inputs/garden_only_input.json'
+input_file = '../inputs/garden_only_input.json'
 input_data = load_input_file(input_file)
 
 result = run_agentic_workflow(input_data)
-with open('output.json', 'w') as f:
+with open('clustered_output.json', 'w') as f:
     json.dump(result, f, indent=2)
 
-print("Results written to output.json")
+print("Clustered results written to clustered_output.json")
