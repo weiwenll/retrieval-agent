@@ -1672,6 +1672,7 @@ def research_places(input_file: str, output_file: str = None) -> dict:
         results = research_places('inputs/simple_input.json')
     """
     import time
+    from datetime import datetime
 
     # Load input
     input_data = load_input_file(input_file)
@@ -1786,13 +1787,29 @@ def research_places(input_file: str, output_file: str = None) -> dict:
 
     elapsed = time.time() - start_time
 
+    # Generate retrieval ID with timestamp
+    retrieval_id = datetime.now().strftime("ret_%Y_%m_%d_%H%M%S")
+
     result = {
-        "places_found": len(formatted_places),
-        "attractions_count": len(attraction_results),
-        "food_count": len(food_results),
-        "requirements": requirements,
-        "time_elapsed": elapsed,
-        "formatted_places": formatted_places
+        "requirements": {
+            "destination_city": input_data.get("destination_city", "Singapore"),
+            "trip_dates": input_data.get("trip_dates", {}),
+            "duration_days": input_data.get("duration_days"),
+            "budget": input_data.get("budget"),
+            "pace": input_data.get("pace"),
+            "optional": input_data.get("optional", {})
+        },
+        "retrieval": {
+            "retrieval_id": retrieval_id,
+            "time_elapsed": round(elapsed, 2),
+            "places_found": len(formatted_places),
+            "attractions_count": len(attraction_results),
+            "food_count": len(food_results),
+            "conditions": requirements,
+            "places_matrix": {
+                "nodes": formatted_places
+            }
+        }
     }
 
     # Save if output specified
