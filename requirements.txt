@@ -1,0 +1,34 @@
+# Shared Requirements for Research Agent and Transport Agent
+
+# Core dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Google Maps API
+googlemaps>=4.10.0
+
+# Wikipedia API
+wikipedia>=1.4.0
+
+# OpenAI for agent reasoning
+openai>=1.0.0
+
+# Optional: Anthropic for alternative LLM
+anthropic>=0.18.0
+
+# HTTP client (for async requests)
+httpx>=0.25.0
+
+# Data handling
+typing-extensions>=4.8.0
+
+# Logging and utilities
+python-dateutil>=2.8.2
+
+# For concurrent processing (built-in, but listing for documentation)
+# concurrent.futures (Python 3.2+)
+# threading (Python built-in)
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0

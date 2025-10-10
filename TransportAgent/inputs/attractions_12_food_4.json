@@ -1,0 +1,679 @@
+{
+  "places_found": 16,
+  "attractions_count": 12,
+  "food_count": 4,
+  "requirements": {
+    "attractions_needed": 24,
+    "food_places_needed": 8,
+    "total_needed": 32,
+    "pace_value": 3,
+    "multiplier": 2.0
+  },
+  "time_elapsed": 36.89941620826721,
+  "formatted_places": [
+    {
+      "place_id": "ChIJQ6QPiwkZ2jERIISQDrknWdU",
+      "name": "Raffles' Landing Site",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2877221,
+        "longitude": 103.8507561
+      },
+      "geo_cluster_id": "central",
+      "address": "179429, 1 Old Parliament Ln, Singapore 179429",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "Open 24 hours",
+        "tuesday": "Open 24 hours",
+        "wednesday": "Open 24 hours",
+        "thursday": "Open 24 hours",
+        "friday": "Open 24 hours",
+        "saturday": "Open 24 hours",
+        "sunday": "Open 24 hours"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Raffles's Landing Site is the location where tradition holds that Sir Stamford Raffles landed in on 28 January 1819. The site is located at Boat Quay within the Civic District, in the Downtown Core of the Central Area, Singapore's central business district.",
+      "links": {
+        "official": null,
+        "reviews": 204
+      },
+      "rating": 4.3,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJg-yJTXYZ2jER7thPNgFqIfs",
+      "name": "Floating Island Mural by Jaxton Su",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.3131643,
+        "longitude": 103.8566998
+      },
+      "geo_cluster_id": "central",
+      "address": "Serangoon Rd, 450, Singapore 218139",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "Open 24 hours",
+        "tuesday": "Open 24 hours",
+        "wednesday": "Open 24 hours",
+        "thursday": "Open 24 hours",
+        "friday": "Open 24 hours",
+        "saturday": "Open 24 hours",
+        "sunday": "Open 24 hours"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "A attraction in Singapore",
+      "links": {
+        "official": null,
+        "reviews": 3
+      },
+      "rating": 4.7,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJq1GINgIZ2jERpf7_tdOg8Ks",
+      "name": "Chinatown",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2817119,
+        "longitude": 103.8449995
+      },
+      "geo_cluster_id": "central",
+      "address": "230 South Bridge Rd, Singapore 058779",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": null,
+        "tuesday": null,
+        "wednesday": null,
+        "thursday": null,
+        "friday": null,
+        "saturday": null,
+        "sunday": null
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Chinatown (Chinese: ) is the catch-all name for an ethnic enclave of Chinese people located outside Greater China, most often in an urban setting. Areas known as \"Chinatown\" exist throughout the world, including Europe, Asia, Africa, Oceania, and the Americas. The history of Chinatowns date back to the Tang dynasty in the 10th century, arising from the nation's important role in global trade. \nBinondo in Manila, established in 1594, is recognized as the world's oldest standing Chinatown. Notable early examples outside Asia include San Francisco's Chinatown in the United States and Melbourne's Chinatown in Australia, which were founded in the early 1850s during the California and Victoria gold rushes, respectively. A more modern example, in Montville, Connecticut, was caused by the displacement of Chinese workers in New York's Manhattan Chinatown following the September 11th attacks in 2001.",
+      "links": {
+        "official": null,
+        "reviews": 325
+      },
+      "rating": 4.5,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJxZfX_9gT2jERknwK8es7IHU",
+      "name": "River Wonders",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.4038498,
+        "longitude": 103.7906676
+      },
+      "geo_cluster_id": "north",
+      "address": "80 Mandai Lake Rd, Singapore 729826",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "10:00AM7:00PM",
+        "tuesday": "10:00AM7:00PM",
+        "wednesday": "10:00AM7:00PM",
+        "thursday": "10:00AM7:00PM",
+        "friday": "10:00AM7:00PM",
+        "saturday": "10:00AM7:00PM",
+        "sunday": "10:00AM7:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "River Wonders, formerly known as River Safari, is a river-themed zoo and aquarium located in Mandai, Singapore, it forms a part of the Mandai Wildlife Reserve, consisting of the Singapore Zoo, Night Safari and Bird Paradise and the newly opened Rainforest Wild. It is built over 12 hectares (30 acres) and nestled between its two counterparts, the Singapore Zoo and the Night Safari, Singapore. It is the first of its kind in Asia and features freshwater exhibits and a river boat ride as its main highlights. The safari was built at a cost of S$160m, with an expected visitor rate of 820,000 people yearly.\n\n",
+      "links": {
+        "official": "https://www.mandai.com/en/river-wonders.html",
+        "reviews": 11525
+      },
+      "rating": 4.4,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJ0QX_Brki2jER-pZKNdqk_a8",
+      "name": "East Coast Park",
+      "type": "park",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.3007842,
+        "longitude": 103.9121866
+      },
+      "geo_cluster_id": "east",
+      "address": "Singapore",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "Open 24 hours",
+        "tuesday": "Open 24 hours",
+        "wednesday": "Open 24 hours",
+        "thursday": "Open 24 hours",
+        "friday": "Open 24 hours",
+        "saturday": "Open 24 hours",
+        "sunday": "Open 24 hours"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "East Coast Park (ECP) is a beach and a park on the southeastern coast of Singapore. It stretches along the south of Marine Parade, Bedok, and Tampines. It was opened in the 1970s, after the Singapore government had completed reclaiming land off the coast at Katong, from Kallang to Changi. Themed \"Recreation for All\", it not only serves the needs of communities in the east, other Singapore residents do also visit the park for sports, recreation, and food.\n\nThe 185-hectare (460-acre) East Coast Park is the largest park in Singapore, and is built entirely on reclaimed land with a man-made beach, where swimming is possible. The beach is protected by breakwaters.\nThe park has barbecue pits, chalets, food centres and amenities for various sports activities. Visitors can fish at Bedok Jetty (Area F). A cycling and inline skating track runs along the perimeter of the park, which measures over 15 km (9.3 mi) long. It is connected to Changi Beach Park by the Coastal Park Connector Network, a 12 km (7.5 mi) park connector running along Tanah Merah Coast Road.",
+      "links": {
+        "official": "https://www.nparks.gov.sg/visit/parks/park-detail/east-coast-park",
+        "reviews": 31207
+      },
+      "rating": 4.6,
+      "tags": [
+        "park"
+      ]
+    },
+    {
+      "place_id": "ChIJQ6MVplUZ2jERn1LmNH0DlDA",
+      "name": "Universal Studios Singapore",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2540421,
+        "longitude": 103.8238084
+      },
+      "geo_cluster_id": "south",
+      "address": "8 Sentosa Gateway, Singapore 098269",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "10:00AM7:00PM",
+        "tuesday": "10:00AM7:00PM",
+        "wednesday": "10:00AM7:00PM",
+        "thursday": "10:00AM5:00PM",
+        "friday": "10:00AM5:00PM",
+        "saturday": "10:00AM5:00PM",
+        "sunday": "10:00AM7:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Universal Studios Singapore (abbreviation: USS) is a theme park located within the Resorts World Sentosa integrated resort at Sentosa in Singapore. It features 24 rides, shows, and attractions in seven themed zones. It is one of the five Universal Studios theme parks around the world.\nIt was a key component of the Genting Singapore's bid for the right to build Singapore's second integrated resort (IR). On 8 December 2006, the Singapore government announced that the consortium had won the bid. Construction of the theme park and the rest of the resort started on 19 April 2007. It is the second Universal Studios theme park in Asia, the other being Universal Studios Japan in Osaka, and the first in Southeast Asia. Official plans for the park were first unveiled to the public when Universal Studios Singapore released a map of the entire park on 20 October 2009. Universal Studios Singapore attracted more than 2 million visitors in the 9 months from its opening.\nThe park officially began operations on 28 May 2011. Over 3 million guests visited the park in its opening year. Since then, Universal Studios Singapore has had approximately 4 million visitors every year. Visitors are made up of local Singaporeans and international tourists. It has been marketed by Universal Destinations & Experiences as a \"one-of-its-kind theme park in Asia\" and that the park was the only one of its kind in Southeast Asia for the foreseeable future. According to the AECOM Theme Index Global Attraction Attendance Report, Universal Studios Singapore is one of the top visited amusement/theme parks worldwide.\n\n",
+      "links": {
+        "official": "https://www.rwsentosa.com/en/play/universal-studios-singapore",
+        "reviews": 106784
+      },
+      "rating": 4.6,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJRW8Hwo0Z2jEREk5x5tk4JIg",
+      "name": "ION Sky",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.304052,
+        "longitude": 103.831767
+      },
+      "geo_cluster_id": "central",
+      "address": "2 Orchard Turn, Singapore 238801",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "12:00PM12:00AM",
+        "tuesday": "12:00PM12:00AM",
+        "wednesday": "12:00PM12:00AM",
+        "thursday": "12:00PM12:00AM",
+        "friday": "12:00PM12:00AM",
+        "saturday": "12:00PM12:00AM",
+        "sunday": "12:00PM12:00AM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Orchard MRT station is an underground Mass Rapid Transit (MRT) interchange station in Singapore, on the NorthSouth (NSL) and ThomsonEast Coast (TEL) lines. Situated along Orchard Boulevard and underneath ION Orchard, the station serves various commercial and retail developments of the Orchard Road shopping district, including Liat Towers, Ngee Ann City, Wheelock Place, Wisma Atria and Shaw House, among others.\nInitially announced as Scotts, it was renamed Orchard Boulevard and subsequently Orchard. The station was included in the early plans for the original MRT network in 1982, and opened as part of the NSL extension to Outram Park station on 12 December 1987. In August 2012, it was announced that Orchard station would serve as an interchange with the TEL. Initially expected to be completed in 2021, the TEL platforms opened on 13 November 2022 as part of TEL Stage 3 (TEL3).\nThe design of Orchard station was intended as a showpiece of the initial MRT network, incorporating a circular concourse with a radial granite floor design. The TEL platforms feature an overhead series of stainless steel panels that reflects the movements of commuters. As part of the MRT network's Art-in-Transit programme, the station features Scotts Road / Orchard Road from ION Sky by Mintio.",
+      "links": {
+        "official": "http://www.ionorchard.com/",
+        "reviews": 3218
+      },
+      "rating": 4.6,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJnXwAOKAZ2jERAs-MHs1aDgI",
+      "name": "CQ @ Clarke Quay",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2906024,
+        "longitude": 103.8464742
+      },
+      "geo_cluster_id": "central",
+      "address": "3 River Valley Rd, Singapore 179024",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": null,
+        "tuesday": null,
+        "wednesday": null,
+        "thursday": null,
+        "friday": null,
+        "saturday": null,
+        "sunday": null
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Clarke Quay is a historical riverside quay in Singapore, located within the Singapore River Planning Area. The quay is situated upstream from the mouth of the Singapore River and Boat Quay.",
+      "links": {
+        "official": "https://www.capitaland.com/sg/malls/clarkequay/en.html",
+        "reviews": 44811
+      },
+      "rating": 4.5,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJ4ddWE6AZ2jERsWZK8-xeBaE",
+      "name": "Clarke Quay Jetty",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2899373,
+        "longitude": 103.8462288
+      },
+      "geo_cluster_id": "central",
+      "address": "Singapore",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "9:00AM11:00PM",
+        "tuesday": "9:00AM11:00PM",
+        "wednesday": "9:00AM11:00PM",
+        "thursday": "9:00AM11:00PM",
+        "friday": "9:00AM11:00PM",
+        "saturday": "9:00AM11:00PM",
+        "sunday": "9:00AM11:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Clarke Quay is a historical riverside quay in Singapore, located within the Singapore River Planning Area. The quay is situated upstream from the mouth of the Singapore River and Boat Quay.",
+      "links": {
+        "official": "https://rivercruise.com.sg/",
+        "reviews": 315
+      },
+      "rating": 4.5,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJYR6HCJ4Z2jERxLqTs3bEj_Q",
+      "name": "Boomarang Bistro & Bar",
+      "type": "bar",
+      "cost_sgd": 30,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2897222,
+        "longitude": 103.8388889
+      },
+      "geo_cluster_id": "central",
+      "address": "60 Robertson Quay, #01-15 The Quayside, Singapore 238252",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "6:00AM3:00AM",
+        "tuesday": "6:00AM3:00AM",
+        "wednesday": "6:00AM3:00AM",
+        "thursday": "6:00AM3:00AM",
+        "friday": "6:00AM3:00AM",
+        "saturday": "6:00AM3:00AM",
+        "sunday": "6:00AM3:00AM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "The following is a list of notable restaurant chains in the United States.",
+      "links": {
+        "official": "http://www.boomarang.com.sg/",
+        "reviews": 1530
+      },
+      "rating": 4,
+      "tags": [
+        "bar"
+      ]
+    },
+    {
+      "place_id": "ChIJLZ9DYnIZ2jERQ51Am7WzJLM",
+      "name": "Burnt Ends",
+      "type": "food",
+      "cost_sgd": 60,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.304606,
+        "longitude": 103.8089925
+      },
+      "geo_cluster_id": "west",
+      "address": "7 Dempsey Rd, #01-02, Singapore 249671",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "Closed",
+        "tuesday": "6:0011:00PM",
+        "wednesday": "6:0011:00PM",
+        "thursday": "12:002:30PM, 6:0011:00PM",
+        "friday": "12:002:30PM, 6:0011:00PM",
+        "saturday": "12:002:30PM, 6:0011:00PM",
+        "sunday": "Closed"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [],
+      "low_carbon_score": null,
+      "description": "Burnt ends are pieces of meat cut from the \"point\" half of a smoked brisket.\nWhen brisket muscles are separated, the lean \"first cut\" or \"flat cut\" is the deep pectoral, while the fattier \"point\", also known as the \"second cut\", \"fat end\", or \"triangular cut\", is the superficial pectoral. A traditional part of Kansas City-style barbecue, burnt ends are considered a delicacy in barbecue cooking.  Either the entire brisket is cooked whole, then the point end is removed and cooked further, or the point and flat are separated prior to cooking. Due to the higher fat content of the brisket point, it takes longer to fully cook to tender and render out fat and collagen. This longer cooking gave rise to the name \"burnt ends\". Sometimes when the flat is done, the point is returned to the smoker for further cooking. Some cooks re-season the point at this time.   \nKansas City style burnt ends are usually served chopped with sauce either on top or on the side. A \"proper\" burnt end should display a modest amount of \"bark\" or char on at least one side. Burnt ends can be served alone (sometimes smothered in barbecue sauce) or in sandwiches, as well as in a variety of other dishes, including baked beans and French fries.\nThe origin of Burnt Ends is credited to the Kansas City restaurant Arthur Bryant's and its' namesake pitmaster. Kansas City native Calvin Trillin is credited with popularizing burnt ends through his references to the burnt ends at Bryant's in his work. In a 1972 article he wrote for Playboy about Arthur Bryant's restaurant in Kansas City, he wrote: \"The main course at Bryant's, as far as I'm concerned, is something that is given away free  the burned edges of the brisket. The counterman just pushes them over to the side and anyone who wants them helps himself. I dream of those burned edges. Sometimes, when Im in some awful, overpriced restaurant in some strange town, trying to choke down some three-dollar hamburger that tastes like a burned sponge, a blank look comes over me: I have just realized that at that very moment, someone in Kansas City is being given those burned edges for free.",
+      "links": {
+        "official": "https://burntends.com.sg/",
+        "reviews": 2472
+      },
+      "rating": 4.5,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJuTpnZVQZ2jEReDI4VP2u_w0",
+      "name": "MERCI MARCEL ORCHARD",
+      "type": "food",
+      "cost_sgd": 30,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.3065784,
+        "longitude": 103.8296124
+      },
+      "geo_cluster_id": "central",
+      "address": "390 Orchard Road, 01-03 Palais Renaissance, 390 Orchard Rd, #01 - 03 / 04, Singapore 238871",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "8:00AM10:30PM",
+        "tuesday": "8:00AM10:30PM",
+        "wednesday": "8:00AM11:30PM",
+        "thursday": "8:00AM11:30PM",
+        "friday": "8:00AM11:30PM",
+        "saturday": "8:00AM11:30PM",
+        "sunday": "8:00AM10:30PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Palais Renaissance, or Palais (pronounced pa-lay) is a mall located in the shopping district of Orchard Road, Singapore. Located between the Royal Thai Embassy and Orchard Towers, Palais Renaissance consists of a 13-storey office block coupled with four storeys of retail space.\nPalais Renaissance is owned and managed by property developer City Developments Limited.",
+      "links": {
+        "official": "http://www.mercimarcelgroup.com/",
+        "reviews": 3609
+      },
+      "rating": 4.7,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJSxaj9WgZ2jERRzKy45IsYl8",
+      "name": "Kimchi Dining | Korean Restaurant Singapore",
+      "type": "food",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.3007562,
+        "longitude": 103.8397289
+      },
+      "geo_cluster_id": "central",
+      "address": "181 Orchard Rd, #06-10 Orchard Central Singapore 238896",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "11:30AM3:00PM, 6:0010:00PM",
+        "tuesday": "11:30AM3:00PM, 6:0010:00PM",
+        "wednesday": "11:30AM3:00PM, 6:0010:00PM",
+        "thursday": "11:30AM3:00PM, 6:0010:00PM",
+        "friday": "11:30AM3:00PM, 6:0010:00PM",
+        "saturday": "11:30AM10:00PM",
+        "sunday": "11:30AM10:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [],
+      "low_carbon_score": null,
+      "description": "Korean cuisine is the set of foods and culinary styles which are associated with Korean culture. This cuisine has evolved through centuries of social and political change. Originating from ancient agricultural and nomadic traditions in Korea and southern Manchuria, Korean cuisine reflects a complex interaction of the natural environment and different cultural trends.\nKorean cuisine is largely based on rice, vegetables, seafood and (at least in South Korea) meats. Dairy is largely absent from the traditional Korean diet. Traditional Korean meals are named for the number of side dishes (; ; banchan) that accompany steam-cooked short-grain rice. Kimchi is served at nearly every meal. Commonly used ingredients include sesame oil, doenjang (fermented bean paste), soy sauce, salt, garlic, ginger, gochugaru (pepper flakes), gochujang (fermented red chili paste) and napa cabbage.\nIngredients and dishes vary by province. Many regional dishes have become national. Korean royal court cuisine once brought all of the unique regional specialties together for the royal family. Foods are regulated by Korean cultural etiquette.\nKimjang, which refers to the process of making kimchi, is listed on the UNESCO Intangible Heritage List.\n\n",
+      "links": {
+        "official": "https://www.instagram.com/kimchi_dining/",
+        "reviews": 3201
+      },
+      "rating": 4.7,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJ1VfC29gR2jERW6utEC6wo5E",
+      "name": "Little Lazy Lizard",
+      "type": "food",
+      "cost_sgd": 30,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.3311585,
+        "longitude": 103.7961955
+      },
+      "geo_cluster_id": "west",
+      "address": "789 Bukit Timah Rd, Singapore 269763",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "12:009:30PM",
+        "tuesday": "12:009:30PM",
+        "wednesday": "12:009:30PM",
+        "thursday": "12:009:30PM",
+        "friday": "12:0010:00PM",
+        "saturday": "11:00AM10:00PM",
+        "sunday": "11:00AM10:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [],
+      "low_carbon_score": null,
+      "description": "Rhys Owain Evans (Welsh pronunciation: [rs ivans]; born 22 July 1967), known as Rhys Ifans, is a Welsh actor. He has portrayed roles in Notting Hill (1999), Kevin & Perry Go Large (2000), and Enduring Love (2004), Pirate Radio (2009), in addition to Xenophilius Lovegood in Harry Potter and the Deathly Hallows  Part 1 (2010), Dr. Curt Connors / Lizard in The Amazing Spider-Man (2012) and Spider-Man: No Way Home (2021), and Grigori Rasputin in The King's Man (2021). His television roles include Hector DeJean in the Epix thriller series Berlin Station, Mycroft Holmes in the CBS series Elementary, and Otto Hightower in the HBO fantasy series House of the Dragon.  \nIfans was also formerly the frontman of the rock bands The Peth and Super Furry Animals.",
+      "links": {
+        "official": "https://lazylizard.com.sg/",
+        "reviews": 1300
+      },
+      "rating": 4.8,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJt6xIMhgZ2jERYTji1BG2WIc",
+      "name": "Private Dining Singapore | Avodah by Stellamoon",
+      "type": "food",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.3019408,
+        "longitude": 103.8407663
+      },
+      "geo_cluster_id": "central",
+      "address": "5 Koek Rd, Singapore 228796",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "Open 24 hours",
+        "tuesday": "Open 24 hours",
+        "wednesday": "Open 24 hours",
+        "thursday": "Open 24 hours",
+        "friday": "Open 24 hours",
+        "saturday": "Open 24 hours",
+        "sunday": "Open 24 hours"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "A food in Singapore",
+      "links": {
+        "official": null,
+        "reviews": 85
+      },
+      "rating": 5,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJ_0dnTtwb2jERK4mQ3ngnayQ",
+      "name": "Lazy Lizard - Pasir Panjang",
+      "type": "bar",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2930834,
+        "longitude": 103.7687374
+      },
+      "geo_cluster_id": "west",
+      "address": "28 Clementi Rd, Singapore 129754",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "12:0010:30PM",
+        "tuesday": "12:0010:30PM",
+        "wednesday": "12:0010:30PM",
+        "thursday": "12:0010:30PM",
+        "friday": "12:0010:30PM",
+        "saturday": "12:0010:30PM",
+        "sunday": "12:0010:30PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [],
+      "low_carbon_score": null,
+      "description": "A bar in Singapore",
+      "links": {
+        "official": "https://lazylizard.com.sg/",
+        "reviews": 1635
+      },
+      "rating": 4.8,
+      "tags": [
+        "bar"
+      ]
+    }
+  ]
+}
