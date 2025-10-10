@@ -369,3 +369,180 @@ def _fetch_wikipedia_batch(place_names: List[str], max_workers: int = 10) -> Dic
             wikipedia_data[name] = summary
 
     return wikipedia_data
+
+
+def generate_tags(
+    place_type: str,
+    all_types: List[str],
+    accessibility_options: List[str],
+    price_level: Optional[int],
+    rating: Optional[float],
+    description: str,
+    name: str,
+    reviews_count: Optional[int] = None,
+    openai_client=None
+) -> List[str]:
+    """
+    Generate enhanced tags for a place based on available data.
+
+    Uses a hybrid approach:
+    1. Rule-based tags from place data (fast, deterministic)
+    2. LLM-extracted tags from description (context-rich)
+
+    Args:
+        place_type: Primary mapped type
+        all_types: All Google Place types
+        accessibility_options: List of accessibility features
+        price_level: Price level (0-4)
+        rating: Place rating
+        description: Place description (from Wikipedia)
+        name: Place name
+        reviews_count: Total number of reviews (user_ratings_total)
+        openai_client: OpenAI client instance for LLM tag extraction
+
+    Returns:
+        List of descriptive tags
+    """
+    from config import (
+        FOOD_TYPE_MAPPINGS,
+        ATTRACTION_TYPE_MAPPINGS,
+        SINGAPORE_AREA_MAPPINGS,
+        TAG_LIMITS,
+        RATING_TAG_THRESHOLDS
+    )
+
+    tags = []
+
+    # 1. Always include primary type
+    tags.append(place_type)
+
+    # 2. Add wheelchair-friendly tag if accessible
+    if accessibility_options and "wheelchair_accessible_entrance" in accessibility_options:
+        tags.append("wheelchair-friendly")
+
+    # 3. Extract food-specific tags from Google types
+    for gtype in all_types:
+        gtype_lower = gtype.lower()
+        if gtype_lower in FOOD_TYPE_MAPPINGS:
+            tags.append(FOOD_TYPE_MAPPINGS[gtype_lower])
+
+    # 4. Add attraction-specific tags from Google types
+    for gtype in all_types:
+        gtype_lower = gtype.lower()
+        if gtype_lower in ATTRACTION_TYPE_MAPPINGS:
+            tag_value = ATTRACTION_TYPE_MAPPINGS[gtype_lower]
+            if tag_value not in tags:
+                tags.append(tag_value)
+
+    # 5. Add price-based tags
+    if price_level is not None:
+        if price_level == 0:
+            tags.append("free")
+        elif price_level == 1:
+            tags.append("budget-friendly")
+        elif price_level in [3, 4]:
+            tags.append("premium")
+
+    # 6. Add rating-based tags (with review count requirements)
+    if rating is not None:
+        # Highly-rated requires both high rating AND sufficient reviews
+        if (rating >= RATING_TAG_THRESHOLDS["highly_rated"]["min_rating"] and
+            reviews_count is not None and
+            reviews_count > RATING_TAG_THRESHOLDS["highly_rated"]["min_reviews"]):
+            tags.append("highly-rated")
+        # Top-rated only requires rating (no review requirement)
+        elif rating >= RATING_TAG_THRESHOLDS["top_rated"]["min_rating"]:
+            if reviews_count is not None and reviews_count > RATING_TAG_THRESHOLDS["top_rated"]["min_reviews"]:
+                tags.append("top-rated")
+
+    # 7. Add location-based tags from name (Singapore-specific)
+    name_lower = name.lower()
+    for area_name, area_tag in SINGAPORE_AREA_MAPPINGS.items():
+        if area_name in name_lower:
+            tags.append(area_tag)
+
+    # 8. Use LLM to extract additional descriptive tags from description
+    # Only if description is from Wikipedia (not generic fallback) and client is provided
+    if openai_client and description and not description.startswith("A "):
+        llm_tags = extract_tags_from_description(
+            description, name, place_type, tags, openai_client
+        )
+        tags.extend(llm_tags)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_tags = []
+    for tag in tags:
+        if tag not in seen:
+            seen.add(tag)
+            unique_tags.append(tag)
+
+    # Limit to max tags for readability
+    return unique_tags[:TAG_LIMITS["max_total_tags"]]
+
+
+def extract_tags_from_description(
+    description: str,
+    name: str,
+    place_type: str,
+    existing_tags: List[str],
+    openai_client
+) -> List[str]:
+    """
+    Use LLM to extract additional descriptive tags from place description.
+
+    Args:
+        description: Wikipedia description
+        name: Place name
+        place_type: Primary type
+        existing_tags: Tags already generated
+        openai_client: OpenAI client instance
+
+    Returns:
+        List of additional tags (max 3)
+    """
+    from config import (
+        TAG_EXTRACTION_PROMPT,
+        TAG_EXTRACTION_SYSTEM_PROMPT,
+        LLM_CONFIG,
+        TAG_LIMITS
+    )
+    import json
+    import re
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        prompt = TAG_EXTRACTION_PROMPT.format(
+            name=name,
+            place_type=place_type,
+            description=description,
+            existing_tags=', '.join(existing_tags)
+        )
+
+        response = openai_client.chat.completions.create(
+            model=LLM_CONFIG["model"],
+            temperature=LLM_CONFIG["temperature"],
+            messages=[
+                {"role": "system", "content": TAG_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=LLM_CONFIG["max_tokens_tags"]
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # Extract JSON array
+        json_match = re.search(r'\[.*?\]', content, re.DOTALL)
+        if json_match:
+            extracted_tags = json.loads(json_match.group())
+            # Filter out any tags that are already in existing_tags
+            new_tags = [t.lower() for t in extracted_tags if isinstance(t, str) and t.lower() not in existing_tags]
+            return new_tags[:TAG_LIMITS["max_llm_tags"]]  # Max 3 additional tags
+
+        return []
+
+    except Exception as e:
+        logger.debug(f"LLM tag extraction failed for {name}: {e}")
+        return []

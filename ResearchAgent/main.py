@@ -93,56 +93,10 @@ except FileNotFoundError:
 # - Returns raw data objects from API calls without any formatting
 # - Has the calculate_required_places method
 
-from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia, fetch_place_enrichments, remove_unicode
+from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia, fetch_place_enrichments, remove_unicode, generate_tags
 from tool_clustering import calculate_geo_cluster
+from config import COMMON_INTEREST_MAPPINGS, DIETARY_KEYWORDS
 import time
-
-# Common interest mappings dictionary (covers ~80% of typical user interests)
-COMMON_INTEREST_MAPPINGS = {
-    # Museums and cultural
-    "museums": "museum", "museum": "museum", "cultural": "museum", "culture": "museum",
-    "art": "museum", "arts": "museum", "gallery": "museum", "galleries": "museum",
-    "history": "museum", "historical": "museum", "heritage": "museum", "educational": "museum",
-
-    # Parks and nature
-    "parks": "park", "park": "park", "gardens": "park", "garden": "park",
-    "nature": "park", "outdoor": "park", "outdoors": "park", "green spaces": "park",
-    "botanical": "park", "recreation": "park",
-
-    # Food and dining
-    "food": "food", "foods": "food", "dining": "food", "restaurants": "food",
-    "restaurant": "food", "cuisine": "food",
-
-    # Cafes and beverages
-    "cafe": "cafe", "cafes": "cafe", "coffee": "cafe", "tea": "cafe", "dessert": "cafe",
-    "desserts": "cafe", "pastry": "bakery", "pastries": "bakery", "bakery": "bakery",
-
-    # Bars and nightlife
-    "bar": "bar", "bars": "bar", "pub": "bar", "pubs": "bar", "drinks": "bar",
-    "nightlife": "bar", "cocktails": "bar", "beer": "bar", "wine": "bar",
-
-    # Shopping
-    "shopping": "shopping_mall", "shops": "shopping_mall", "mall": "shopping_mall",
-    "malls": "shopping_mall", "retail": "shopping_mall", "boutiques": "shopping_mall",
-    "markets": "shopping_mall", "market": "shopping_mall",
-
-    # Tourist attractions
-    "attractions": "tourist_attraction", "attraction": "tourist_attraction",
-    "sightseeing": "tourist_attraction", "landmarks": "tourist_attraction",
-    "landmark": "tourist_attraction", "tourist": "tourist_attraction",
-    "family": "tourist_attraction", "kids": "tourist_attraction", "children": "tourist_attraction",
-    "entertainment": "tourist_attraction", "fun": "tourist_attraction",
-
-    # Accommodation
-    "hotel": "lodging", "hotels": "lodging", "accommodation": "lodging",
-    "stay": "lodging", "lodging": "lodging", "hostel": "lodging", "motel": "lodging"
-}
-
-# Dietary keywords that should append " food"
-DIETARY_KEYWORDS = {
-    "vegetarian", "vegan", "halal", "kosher", "gluten-free",
-    "gluten free", "organic", "plant-based", "local cuisine", "local"
-}
 
 class PlacesResearchAgent:
     """
@@ -814,6 +768,19 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
         place_type = self._map_to_standard_type(all_types)
         description = wikipedia_summary or f"A {place_type} in Singapore"
 
+        # Generate enhanced tags using tools function
+        tags = generate_tags(
+            place_type=place_type,
+            all_types=all_types,
+            accessibility_options=accessibility_options,
+            price_level=place_data.get('price_level'),
+            rating=place_data.get('rating'),
+            description=description,
+            name=name,
+            reviews_count=reviews_count,
+            openai_client=self.client
+        )
+
         return {
             "place_id": place_data.get('place_id'),
             "name": remove_unicode(name),
@@ -836,7 +803,7 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
             "description": remove_unicode(description),
             "links": {"official": place_data.get('website'), "reviews": reviews_count},
             "rating": place_data.get('rating'),
-            "tags": [place_type]
+            "tags": tags
         }
 
     def _extract_geo(self, place_data: Dict) -> Optional[Dict]:
@@ -1833,7 +1800,7 @@ if __name__ == "__main__":
         input_file = sys.argv[1]
         output_file = sys.argv[2] if len(sys.argv) > 2 else None
         result = research_places(input_file, output_file)
-        print(f"Found {result['places_found']} places")
+        print(f"Found {result['retrieval']['places_found']} places")
     else:
         print("Usage: python main.py <input_file> [output_file]")
         print("Example: python main.py inputs/input.json outputs/output.json")
