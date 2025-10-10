@@ -42,10 +42,10 @@ load_dotenv()
 
 # Check API keys
 print("API Keys Status:")
-print(f"GOOGLE_MAPS_API_KEY: {'✓ Set' if os.getenv('GOOGLE_MAPS_API_KEY') else '✗ Missing'}")
-print(f"CLIMATIQ_API_KEY: {'✓ Set' if os.getenv('CLIMATIQ_API_KEY') else '✗ Missing'}")
-print(f"OPENAI_API_KEY: {'✓ Set' if os.getenv('OPENAI_API_KEY') else '✗ Missing'}")
-print(f"ANTHROPIC_API_KEY: {'✓ Set' if os.getenv('ANTHROPIC_API_KEY') else '✗ Missing'}")
+print(f"GOOGLE_MAPS_API_KEY: {'Set' if os.getenv('GOOGLE_MAPS_API_KEY') else 'Missing'}")
+print(f"CLIMATIQ_API_KEY: {'Set' if os.getenv('CLIMATIQ_API_KEY') else 'Missing'}")
+print(f"OPENAI_API_KEY: {'Set' if os.getenv('OPENAI_API_KEY') else 'Missing'}")
+print(f"ANTHROPIC_API_KEY: {'Set' if os.getenv('ANTHROPIC_API_KEY') else 'Missing'}")
 
 # ## Input Data Loading
 # Load and validate input file with trip requirements.
@@ -93,12 +93,70 @@ except FileNotFoundError:
 # - Returns raw data objects from API calls without any formatting
 # - Has the calculate_required_places method
 
-from tools import search_places, search_multiple_keywords, get_place_details
+from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia
+import time
 
-class PlacesResearchReasoningAgent:
+# Common interest mappings dictionary (covers ~80% of typical user interests)
+COMMON_INTEREST_MAPPINGS = {
+    # Museums and cultural
+    "museums": "museum", "museum": "museum", "cultural": "museum", "culture": "museum",
+    "art": "museum", "arts": "museum", "gallery": "museum", "galleries": "museum",
+    "history": "museum", "historical": "museum", "heritage": "museum", "educational": "museum",
+
+    # Parks and nature
+    "parks": "park", "park": "park", "gardens": "park", "garden": "park",
+    "nature": "park", "outdoor": "park", "outdoors": "park", "green spaces": "park",
+    "botanical": "park", "recreation": "park",
+
+    # Food and dining
+    "food": "food", "foods": "food", "dining": "food", "restaurants": "food",
+    "restaurant": "food", "cuisine": "food",
+
+    # Cafes and beverages
+    "cafe": "cafe", "cafes": "cafe", "coffee": "cafe", "tea": "cafe", "dessert": "cafe",
+    "desserts": "cafe", "pastry": "bakery", "pastries": "bakery", "bakery": "bakery",
+
+    # Bars and nightlife
+    "bar": "bar", "bars": "bar", "pub": "bar", "pubs": "bar", "drinks": "bar",
+    "nightlife": "bar", "cocktails": "bar", "beer": "bar", "wine": "bar",
+
+    # Shopping
+    "shopping": "shopping_mall", "shops": "shopping_mall", "mall": "shopping_mall",
+    "malls": "shopping_mall", "retail": "shopping_mall", "boutiques": "shopping_mall",
+    "markets": "shopping_mall", "market": "shopping_mall",
+
+    # Tourist attractions
+    "attractions": "tourist_attraction", "attraction": "tourist_attraction",
+    "sightseeing": "tourist_attraction", "landmarks": "tourist_attraction",
+    "landmark": "tourist_attraction", "tourist": "tourist_attraction",
+    "family": "tourist_attraction", "kids": "tourist_attraction", "children": "tourist_attraction",
+    "entertainment": "tourist_attraction", "fun": "tourist_attraction",
+
+    # Accommodation
+    "hotel": "lodging", "hotels": "lodging", "accommodation": "lodging",
+    "stay": "lodging", "lodging": "lodging", "hostel": "lodging", "motel": "lodging"
+}
+
+# Dietary keywords that should append " food"
+DIETARY_KEYWORDS = {
+    "vegetarian", "vegan", "halal", "kosher", "gluten-free",
+    "gluten free", "organic", "plant-based", "local cuisine", "local"
+}
+
+class PlacesResearchAgent:
     """
-    Specialized agent for reasoning about location-based attraction research.
-    Returns raw data from Google Places API without formatting.
+    Combined agent for researching and formatting Singapore attractions and food places.
+
+    Features:
+    - Dictionary-based interest mapping (80% coverage, minimal LLM use)
+    - Strict place count enforcement (stops when target met)
+    - Dietary-aware food search (Singapore-specific queries)
+    - Timeout mechanism (13 minutes hard limit)
+    - Integrated formatting (research + format in one class)
+
+    Usage:
+        agent = PlacesResearchAgent()
+        results = agent.research_and_format(input_data)
     """
 
     def __init__(self, system_prompt=""):
@@ -389,36 +447,289 @@ class PlacesResearchReasoningAgent:
                     all_places.extend(places)
         return all_places
 
-    def calculate_required_places(self, pace: str, duration_days: int) -> int:
+    def calculate_required_places(self, pace: str, duration_days: int, multiplier: float = None) -> dict:
         """
-        Agent's internal goal-setting: Calculate required number of places.
-        """
-        try:
-            pace_mapping = {
-                "slow": 2,
-                "relaxed": 4,
-                "moderate": 4,
-                "active": 6,
-                "standard": 6,
-                "fast": 8,
-                "intensive": 8
-            }
-            
-            multiplier = float(os.getenv("MAX_PLACES_MULTIPLIER", "2"))
-            pace_value = pace_mapping.get(pace.lower(), 6)
-            required_places = int(pace_value * duration_days * multiplier)
-            
-            # Only enforce minimum, no maximum cap
-            required_places = max(required_places, 15)  # Minimum 15 places
+        Calculate exact number of places needed.
 
-            print(f"REASONING AGENT: Goal set - {required_places} places for {pace} pace over {duration_days} days")
-            return required_places
-            
-        except (ValueError, TypeError, AttributeError):
-            print("REASONING AGENT: Failed to calculate required places, using default: 15")
-            return 15
-        
-# ## Places Research Agent - Formatting Implementation
+        Formula:
+        - Attractions: pace_value * days * multiplier (minimum multiplier = 2)
+        - Food: 2 per day (minimum)
+
+        Args:
+            pace: Trip pace (slow, relaxed, moderate, active, fast, intensive)
+            duration_days: Number of days
+            multiplier: Optional multiplier override (default from env or 2)
+
+        Returns:
+            dict with attractions_needed, food_places_needed, total_needed
+        """
+        pace_mapping = {
+            "slow": 2,
+            "relaxed": 3,
+            "moderate": 4,
+            "active": 5,
+            "fast": 6,
+            "intensive": 6
+        }
+
+        pace_value = pace_mapping.get(pace.lower(), 4)
+
+        # Get multiplier from env or parameter (minimum 2)
+        if multiplier is None:
+            multiplier = float(os.getenv("MAX_PLACES_MULTIPLIER", "2"))
+        multiplier = max(multiplier, 2.0)  # Enforce minimum of 2
+
+        # Attractions calculation: pace * days * multiplier
+        attractions_needed = int(pace_value * duration_days * multiplier)
+
+        # Food calculation: 2 per day minimum
+        food_per_day = 2
+        food_places_needed = food_per_day * duration_days
+
+        requirements = {
+            "attractions_needed": attractions_needed,
+            "food_places_needed": food_places_needed,
+            "total_needed": attractions_needed + food_places_needed,
+            "pace_value": pace_value,
+            "multiplier": multiplier
+        }
+
+        logger.info(f"Requirements: {requirements['attractions_needed']} attractions + {requirements['food_places_needed']} food = {requirements['total_needed']} total")
+        return requirements
+
+    def map_interests(self, user_interests: List[str]) -> List[str]:
+        """
+        Map user interests to Google Places categories using hybrid approach.
+        First checks dictionary, then uses LLM for unmapped interests.
+        """
+        mapped = []
+        unmapped = []
+
+        for interest in user_interests:
+            interest_lower = interest.lower().strip()
+
+            # Check if it's a dietary keyword
+            if interest_lower in DIETARY_KEYWORDS:
+                mapped.append(f"{interest_lower} food")
+                continue
+
+            # Check dictionary mapping
+            if interest_lower in COMMON_INTEREST_MAPPINGS:
+                category = COMMON_INTEREST_MAPPINGS[interest_lower]
+                # Skip food categories for attractions
+                if category not in ["food", "restaurant"]:
+                    mapped.append(category)
+            else:
+                unmapped.append(interest)
+
+        # Use LLM for unmapped interests (batch call)
+        if unmapped:
+            logger.info(f"Using LLM to map {len(unmapped)} interests: {unmapped}")
+            llm_mapped = self._map_interests_with_llm(unmapped)
+            mapped.extend(llm_mapped)
+
+        # Default to tourist_attraction if nothing mapped
+        if not mapped:
+            mapped.append("tourist_attraction")
+
+        logger.info(f"Mapped interests: {mapped}")
+        return mapped
+
+    def _map_interests_with_llm(self, unmapped_interests: List[str]) -> List[str]:
+        """Use LLM to map unmapped interests to categories."""
+        prompt = f"""Map these interests to Google Places categories. Return only valid categories.
+
+Valid categories: tourist_attraction, museum, park, food, cafe, bar, bakery, shopping_mall, lodging
+
+Interests to map: {', '.join(unmapped_interests)}
+
+Return JSON array of categories (e.g., ["museum", "park"])"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                temperature=0.1,
+                messages=[
+                    {"role": "system", "content": "You map user interests to Google Places API categories. Return only a JSON array."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            content = response.choices[0].message.content.strip()
+            # Extract JSON array from response
+            import re
+            json_match = re.search(r'\[.*\]', content, re.DOTALL)
+            if json_match:
+                categories = json.loads(json_match.group())
+                return [c for c in categories if c not in ["food", "restaurant"]]
+            return ["tourist_attraction"]
+
+        except Exception as e:
+            logger.error(f"LLM mapping failed: {e}")
+            return ["tourist_attraction"]
+
+    def create_food_search_terms(self, food_interests: List[str], dietary_restrictions: List[str], days: int) -> List[str]:
+        """
+        Generate food search terms based on food interests and dietary restrictions.
+        Prioritizes specific food types (restaurant, cafe) if mentioned in interests.
+        """
+        base_searches = []
+
+        # Check if user has specific food type interests
+        has_restaurant = any('restaurant' in str(i).lower() for i in food_interests)
+        has_cafe = any('cafe' in str(i).lower() or 'coffee' in str(i).lower() for i in food_interests)
+        has_hawker = any('hawker' in str(i).lower() or 'food court' in str(i).lower() for i in food_interests)
+
+        # Build search terms based on interests
+        if has_restaurant:
+            # Prioritize restaurants
+            if dietary_restrictions:
+                for restriction in dietary_restrictions:
+                    base_searches.extend([
+                        f"{restriction} restaurant Singapore",
+                        f"Singapore {restriction} dining"
+                    ])
+            else:
+                base_searches.extend([
+                    "restaurant Singapore",
+                    "fine dining Singapore",
+                    "local restaurant Singapore"
+                ])
+        elif has_cafe:
+            # Prioritize cafes
+            base_searches.extend([
+                "cafe Singapore",
+                "coffee shop Singapore",
+                "breakfast cafe Singapore"
+            ])
+        elif has_hawker:
+            # Prioritize hawker centers
+            base_searches.extend([
+                "hawker centre Singapore",
+                "food court Singapore",
+                "local hawker Singapore"
+            ])
+        else:
+            # Mixed approach - variety of food places
+            if dietary_restrictions:
+                for restriction in dietary_restrictions[:2]:  # Limit to 2 restrictions
+                    base_searches.append(f"{restriction} food Singapore")
+            else:
+                base_searches.extend([
+                    "restaurant Singapore",
+                    "cafe Singapore",
+                    "hawker centre Singapore"
+                ])
+
+        # Limit searches to avoid over-fetching
+        return base_searches[:3]
+
+    def check_timeout(self, start_time: float, timeout_seconds: int = 780) -> bool:
+        """Check if execution is approaching timeout (13 minutes = 780 seconds)."""
+        elapsed = time.time() - start_time
+        if elapsed >= timeout_seconds:
+            logger.warning(f"Timeout reached: {elapsed:.1f}s")
+            return True
+        return False
+
+    def search_with_requirements(self, location, keyword, min_rating, max_results_needed):
+        """
+        Helper to search with automatic result limiting and radius expansion.
+        Expands search radius and pages if insufficient results found.
+        """
+        # Determine pages needed (20 results per page)
+        pages_needed = min(3, (max_results_needed + 19) // 20)
+
+        # Try different radii if not enough results (progressive expansion)
+        radii_to_try = [5000, 10000, 15000, 20000]  # meters (5km to 20km)
+        all_results = []
+
+        for radius in radii_to_try:
+            if len(all_results) >= max_results_needed:
+                break
+
+            logger.info(f"Searching '{keyword}' radius={radius}m, pages={pages_needed}, need {max_results_needed - len(all_results)} more")
+
+            results = search_places(
+                location=location,
+                keyword=keyword,
+                radius=radius,
+                max_pages=pages_needed,
+                min_rating=min_rating
+            )
+
+            # Deduplicate by place_id
+            existing_ids = {p.get('place_id') for p in all_results}
+            new_results = [p for p in results if p.get('place_id') not in existing_ids]
+
+            all_results.extend(new_results)
+            logger.info(f"Found {len(new_results)} new results at radius {radius}m (total: {len(all_results)})")
+
+            # If we got enough, stop expanding
+            if len(all_results) >= max_results_needed:
+                break
+
+            # If no new results and already at max pages, try next radius
+            if not new_results and pages_needed >= 3:
+                continue
+
+        return all_results[:max_results_needed]
+
+    # === FORMATTING METHODS ===
+
+    def format_results(self, raw_places: List[Dict]) -> List[Dict]:
+        """
+        Format raw places from search into structured schema.
+        This is the only formatting method - takes raw results and formats them.
+        """
+        return [self._format_single_place(p) for p in raw_places]
+
+    def _format_single_place(self, place_data: Dict) -> Dict:
+        """Format single place from raw API data to structured schema."""
+        return {
+            "place_id": place_data.get('place_id'),
+            "name": place_data.get('name', 'Unknown Place'),
+            "type": self._map_to_standard_type(place_data.get('types', [])[0] if place_data.get('types') else None),
+            "cost_sgd": self._map_price_level_to_cost(place_data.get('price_level')),
+            "onsite_co2_kg": None,
+            "geo": self._extract_geo(place_data),
+            "address": place_data.get('formatted_address') or place_data.get('vicinity'),
+            "nearest_mrt": None,
+            "low_carbon_score": None,
+            "description": f"A place in Singapore",
+            "links": {"official": place_data.get('website'), "reviews": None},
+            "rating": place_data.get('rating'),
+            "tags": [self._map_to_standard_type(place_data.get('types', [])[0] if place_data.get('types') else None)]
+        }
+
+    def _extract_geo(self, place_data: Dict) -> Optional[Dict]:
+        """Extract geo coordinates from place data."""
+        geometry = place_data.get('geometry')
+        if not geometry:
+            return None
+        location = geometry.get('location', {})
+        return {"latitude": location.get('lat'), "longitude": location.get('lng')}
+
+    def _map_to_standard_type(self, google_type: str) -> str:
+        """Map Google Places type to standard type."""
+        if not google_type:
+            return "attraction"
+        mapping = {
+            "tourist_attraction": "attraction", "point_of_interest": "attraction",
+            "restaurant": "food", "food": "food", "cafe": "cafe", "bar": "bar",
+            "bakery": "bakery", "park": "park", "museum": "museum",
+            "shopping_mall": "shopping", "lodging": "accommodation", "hotel": "accommodation"
+        }
+        return mapping.get(google_type.lower(), "attraction")
+
+    def _map_price_level_to_cost(self, price_level: Optional[int]) -> Optional[int]:
+        """Map Google's price level (0-4) to SGD cost estimate."""
+        if price_level is None:
+            return None
+        return {0: 0, 1: 15, 2: 30, 3: 60, 4: 100}.get(price_level)
+
+
+# ## Places Research Agent - Formatting Implementation (DEPRECATED)
 # - Takes raw Google Places API data as input
 # - Transforms it into specified schema format required by the planning agent
 # - Sets null values for unavailable data
@@ -1086,50 +1397,130 @@ class PlacesClusteringAgent:
             "clustered_places": []
         }
 
-def run_agentic_workflow(input_data):
-    """Run agent workflow: coordinate between reasoning, formatting, and clustering agents."""
+# ## Simple Function Handler
 
-    # Initialize agents
-    reasoning_agent = PlacesResearchReasoningAgent()
-    formatting_agent = PlacesResearchFormattingAgent()
-    clustering_agent = PlacesClusteringAgent()
-
-    # Create prompt for reasoning agent with input data
-    prompt = f"""
-    I need to find attractions for a trip to Singapore with the following requirements:
-
-    Trip Details:
-    - Duration: {input_data.get('duration_days', 1)} days
-    - Pace: {input_data.get('pace', 'moderate')}
-    - Budget: ${input_data.get('budget', 0)}
-
-    Optional Preferences:
-    - Interests: {input_data.get('optional', {}).get('interests', [])}
-    - Accommodation Location: {input_data.get('optional', {}).get('accommodation_location', {})}
-
-    Please search for appropriate attractions near the accommodation location based on these preferences.
+def research_places(input_file: str, output_file: str = None) -> dict:
     """
+    Simple function handler to research and format Singapore places.
 
-    # Get raw data from reasoning agent
-    reasoning_result = reasoning_agent(prompt)
+    Args:
+        input_file: Path to input JSON file
+        output_file: Optional path to save results (default: ResearchAgent/output.json)
 
-    # Format the results using formatting agent
-    formatted_result = formatting_agent.format_response(reasoning_result)
+    Returns:
+        Dictionary with formatted places
 
-    # Get accommodation location for clustering
-    accommodation_location = input_data.get('optional', {}).get('accommodation_location', {})
+    Example:
+        results = research_places('inputs/simple_input.json')
+    """
+    import time
 
-    # Cluster the places geographically with travel connections
-    clustered_result = clustering_agent.cluster_places(formatted_result, accommodation_location)
+    # Load input
+    input_data = load_input_file(input_file)
+    if not input_data:
+        return {"error": "Failed to load input file"}
 
-    return clustered_result
+    # Initialize agent
+    agent = PlacesResearchAgent()
+    start_time = time.time()
 
-# Load input data
-input_file = '../inputs/garden_only_input.json'
-input_data = load_input_file(input_file)
+    # Extract parameters
+    pace = input_data.get('pace', 'moderate')
+    duration_days = input_data.get('duration_days', 1)
+    location = input_data.get('optional', {}).get('accommodation_location', {})
+    user_interests = input_data.get('optional', {}).get('interests', [])
+    dietary_restrictions = input_data.get('optional', {}).get('dietary_restrictions', [])
+    if isinstance(dietary_restrictions, str):
+        dietary_restrictions = [dietary_restrictions]
 
-result = run_agentic_workflow(input_data)
-with open('clustered_output.json', 'w') as f:
-    json.dump(result, f, indent=2)
+    # Calculate requirements
+    requirements = agent.calculate_required_places(pace, duration_days)
+    print(f"Requirements: {requirements['attractions_needed']} attractions + {requirements['food_places_needed']} food = {requirements['total_needed']} total")
 
-print("Clustered results written to clustered_output.json")
+    # Map interests
+    mapped_interests = agent.map_interests(user_interests) if user_interests else ['tourist_attraction']
+    print(f"Mapped interests: {mapped_interests}")
+
+    # Search attractions
+    attraction_results = []
+    for interest in mapped_interests:
+        if agent.check_timeout(start_time):
+            break
+        if len(attraction_results) >= requirements['attractions_needed']:
+            print(f"Reached target: {len(attraction_results)}/{requirements['attractions_needed']} attractions")
+            break
+
+        min_rating = 3.5 if interest == 'shopping_mall' else 4.0
+        results = agent.search_with_requirements(
+            location, interest, min_rating,
+            requirements['attractions_needed'] - len(attraction_results)
+        )
+        attraction_results.extend(results)
+        print(f"Found {len(results)} {interest} places (total attractions: {len(attraction_results)})")
+
+    # Search food - extract food-related interests from user interests
+    food_interests = [i for i in user_interests if any(
+        food_kw in str(i).lower() for food_kw in ['restaurant', 'cafe', 'food', 'dining', 'hawker', 'bar', 'bakery']
+    )]
+
+    food_search_terms = agent.create_food_search_terms(food_interests, dietary_restrictions, duration_days)
+    print(f"Food interests: {food_interests}")
+    print(f"Food search terms: {food_search_terms}")
+
+    food_results = []
+    for food_term in food_search_terms:
+        if agent.check_timeout(start_time):
+            break
+        if len(food_results) >= requirements['food_places_needed']:
+            print(f"Reached target: {len(food_results)}/{requirements['food_places_needed']} food places")
+            break
+
+        # Use rating 4.0+ for food to ensure quality
+        min_food_rating = 4.0
+        results = agent.search_with_requirements(
+            location, food_term, min_food_rating,
+            requirements['food_places_needed'] - len(food_results)
+        )
+        food_results.extend(results)
+        print(f"Found {len(results)} {food_term} places (total food: {len(food_results)})")
+
+    # Format places
+    all_places = attraction_results + food_results
+    formatted_places = agent.format_results(all_places)
+
+    elapsed = time.time() - start_time
+
+    result = {
+        "places_found": len(formatted_places),
+        "attractions_count": len(attraction_results),
+        "food_count": len(food_results),
+        "requirements": requirements,
+        "time_elapsed": elapsed,
+        "formatted_places": formatted_places
+    }
+
+    # Save if output specified
+    if not output_file:
+        output_file = 'ResearchAgent/output.json'
+
+    with open(output_file, 'w') as f:
+        json.dump(result, f, indent=2)
+
+    print(f"\nSummary: Found {len(attraction_results)} attractions + {len(food_results)} food = {len(formatted_places)} total places")
+    print(f"Time elapsed: {elapsed:.2f}s")
+    logger.info(f"Found {len(formatted_places)} places, saved to {output_file}")
+    return result
+
+
+# ## Main Execution
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1:
+        input_file = sys.argv[1]
+        output_file = sys.argv[2] if len(sys.argv) > 2 else None
+        result = research_places(input_file, output_file)
+        print(f"Found {result['places_found']} places")
+    else:
+        print("Usage: python main.py <input_file> [output_file]")
+        print("Example: python main.py inputs/simple_input.json")

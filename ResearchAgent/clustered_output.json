@@ -1,0 +1,1411 @@
+{
+  "reasoning": "To find appropriate attractions for your trip to Singapore, I'll start by mapping your interests to the standardized categories. The interest \"gardens\" maps to the category \"park\". I'll then search for parks near your accommodation location in Bukit Timah, Singapore.\n\nGiven the relaxed pace and 2-day duration, I'll ensure to find enough attractions to fill your itinerary comfortably. Let's start by searching for parks near your accommodation location.",
+  "places_found": 20,
+  "total_clusters": 2,
+  "accommodation": {
+    "location": {
+      "lat": 1.3294,
+      "lon": 103.8021,
+      "neighborhood": "Bukit Timah"
+    },
+    "geo_cluster_id": "central"
+  },
+  "clustered_places": [
+    {
+      "cluster_id": "central",
+      "cluster_name": "Central Singapore",
+      "places_count": 14,
+      "average_distance_km": 4.95,
+      "recommended_travel_mode": "MRT",
+      "places": [
+        {
+          "place_id": "ChIJc-qInBwa2jERpyqg4OcodwA",
+          "name": "National Parks Board",
+          "type": "attraction",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3157058,
+            "longitude": 103.8161825
+          },
+          "geo_cluster_id": "central",
+          "address": "1 Cluny Rd, Singapore Botanic Gardens, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "The National Parks Board is a key institution in Singapore, responsible for the management and conservation of the country's parks and gardens.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.7,
+          "tags": [
+            "conservation",
+            "parks",
+            "gardens",
+            "nature",
+            "government"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 2.18,
+            "travel_modes": [
+              {
+                "mode": "Walk",
+                "estimated_time_minutes": 26,
+                "cost_sgd": 0,
+                "available": true
+              },
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 13,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 8,
+                "cost_sgd": 9.5,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJvWDbfRwa2jERgNnTOpAU3-o",
+          "name": "Singapore Botanic Gardens",
+          "type": "attraction",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3138397,
+            "longitude": 103.8159136
+          },
+          "geo_cluster_id": "central",
+          "address": "1 Cluny Rd, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "The Singapore Botanic Gardens, a UNESCO World Heritage Site, is a lush tropical paradise featuring the renowned National Orchid Garden and a rich history in botanical research.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.7,
+          "tags": [
+            "UNESCO",
+            "botanical",
+            "orchids",
+            "heritage",
+            "nature"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 2.31,
+            "travel_modes": [
+              {
+                "mode": "Walk",
+                "estimated_time_minutes": 27,
+                "cost_sgd": 0,
+                "available": true
+              },
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 8,
+                "cost_sgd": 9.8,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJq4qpIhka2jERGKphTl48lQg",
+          "name": "Learning Forest",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3111076,
+            "longitude": 103.8143612
+          },
+          "geo_cluster_id": "central",
+          "address": "753 Tyersall Ave, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "The Learning Forest in Singapore offers an immersive experience in nature, inspired by the Forest School model, promoting hands-on learning and personal development in a lush woodland environment.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.7,
+          "tags": [
+            "nature",
+            "education",
+            "forest",
+            "outdoor activities",
+            "family-friendly"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 2.45,
+            "travel_modes": [
+              {
+                "mode": "Walk",
+                "estimated_time_minutes": 29,
+                "cost_sgd": 0,
+                "available": true
+              },
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 8,
+                "cost_sgd": 10.1,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJ_3Bj3IQa2jERM0aLDH-DUqA",
+          "name": "Firefly Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3204253,
+            "longitude": 103.7646389
+          },
+          "geo_cluster_id": "central",
+          "address": "304 Clementi Ave 4, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Firefly Park is a charming neighborhood park in Clementi, offering a peaceful setting for relaxation and community activities.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.3,
+          "tags": [
+            "neighborhood park",
+            "relaxation",
+            "community",
+            "family-friendly",
+            "outdoor"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 4.28,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 18,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 22,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 12,
+                "cost_sgd": 14.7,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJs3oprUQQ2jERp8A9mbkPZJE",
+          "name": "Bukit Batok Nature Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3485421,
+            "longitude": 103.7641994
+          },
+          "geo_cluster_id": "central",
+          "address": "Cnr Bukit Batok East Avenue 2, Bukit Batok East Ave 6, and",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Bukit Batok Nature Park offers a serene escape with lush greenery and scenic trails, set against the backdrop of Singapore's historical quarrying industry.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.5,
+          "tags": [
+            "nature",
+            "hiking",
+            "scenic",
+            "history",
+            "relaxation"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 4.72,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 19,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 23,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 15.8,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJr_uWXrEb2jERw4hpdv17mZc",
+          "name": "Kent Ridge Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2838852,
+            "longitude": 103.7912945
+          },
+          "geo_cluster_id": "central",
+          "address": "Vigilante Dr",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Kent Ridge Park, with its rich history and diverse plant life, is a haven for bird-watchers and eco-tourists, offering a glimpse into Singapore's World War II past.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.6,
+          "tags": [
+            "history",
+            "nature",
+            "bird-watching",
+            "eco-tourism",
+            "WWII"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.2,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 20,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 25,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 15,
+                "cost_sgd": 17.0,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJpwd8kn8Z2jERptmG8rTWrsI",
+          "name": "Tiong Bahru Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2869819,
+            "longitude": 103.8247631
+          },
+          "geo_cluster_id": "central",
+          "address": "1 Henderson Rd, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Tiong Bahru Park is a delightful green space in one of Singapore's oldest housing estates, offering a blend of history and modernity with its unique playgrounds and serene environment.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.4,
+          "tags": [
+            "historic",
+            "family-friendly",
+            "playground",
+            "urban park",
+            "local culture"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.35,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 20,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 26,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 16,
+                "cost_sgd": 17.4,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJJR6WlZwZ2jERrqozupYl9tg",
+          "name": "Kim Seng Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2928315,
+            "longitude": 103.8351896
+          },
+          "geo_cluster_id": "central",
+          "address": "River Valley Green, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Kim Seng Park is a serene riverside park in Singapore, named after the prominent 19th-century merchant and philanthropist Tan Kim Seng.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.5,
+          "tags": [
+            "riverside",
+            "serene",
+            "history",
+            "relaxation",
+            "greenery"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.48,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 20,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 26,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 16,
+                "cost_sgd": 17.7,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJGeWzwMUZ2jERUmSzZCF_59M",
+          "name": "Istana Park",
+          "type": "attraction",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2992392,
+            "longitude": 103.8438178
+          },
+          "geo_cluster_id": "central",
+          "address": "Bounded by Orchard Road Penang Road, Penang Lane and, Buyong Rd",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Istana Park, located in the Civic District, features the iconic Festival Arch and offers a glimpse into Singapore's heritage with its Istana Heritage Gallery.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.3,
+          "tags": [
+            "heritage",
+            "civic district",
+            "art",
+            "gallery",
+            "landmark"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.72,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 21,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 27,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 17,
+                "cost_sgd": 18.3,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJAWPFX74Z2jERMNOp5yKm234",
+          "name": "Mount Emily Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3045756,
+            "longitude": 103.847599
+          },
+          "geo_cluster_id": "central",
+          "address": "Mt Emily Rd, Upper Wilkie Rd, and",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Mount Emily Park is a tranquil green space in Singapore's District 9, offering a peaceful retreat with its mature trees and proximity to Little India and Bugis.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.4,
+          "tags": [
+            "tranquil",
+            "green space",
+            "central",
+            "nature",
+            "retreat"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.76,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 21,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 28,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 17,
+                "cost_sgd": 18.4,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJPV8Z1JwZ2jERKuFD4uIVgOM",
+          "name": "Jubilee Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2937577,
+            "longitude": 103.8449279
+          },
+          "geo_cluster_id": "central",
+          "address": "River Valley Rd",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Jubilee Park is a serene green space located on River Valley Road, perfect for a leisurely stroll or a peaceful retreat from the bustling city.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.7,
+          "tags": [
+            "park",
+            "relaxation",
+            "nature",
+            "family-friendly",
+            "outdoor"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 6.19,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 22,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 29,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 18,
+                "cost_sgd": 19.5,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJVSYjJKIZ2jERpRFinATD52s",
+          "name": "Fort Canning Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2943876,
+            "longitude": 103.8458033
+          },
+          "geo_cluster_id": "central",
+          "address": "Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Fort Canning Park is a historic hilltop park in Singapore's central business district, known for its rich history and as a vibrant venue for exhibitions, concerts, and outdoor activities.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.6,
+          "tags": [
+            "historic",
+            "concerts",
+            "outdoor activities",
+            "central location",
+            "exhibitions"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 6.23,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 22,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 29,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 18,
+                "cost_sgd": 19.6,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJm3qlB3QZ2jERxBP4Sxulkiw",
+          "name": "Pearl's Hill City Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2838,
+            "longitude": 103.8397627
+          },
+          "geo_cluster_id": "central",
+          "address": "Chin Swee Road &, Pearl's Hill Rd",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Pearl's Hill City Park is a tranquil city park built around a reservoir, offering a peaceful retreat in the heart of Singapore.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.2,
+          "tags": [
+            "city park",
+            "reservoir",
+            "tranquil",
+            "retreat",
+            "central"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 6.58,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 23,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 31,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 19,
+                "cost_sgd": 20.4,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJ____GwsZ2jERGJbKgdy3fOo",
+          "name": "Hong Lim Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.2865657,
+            "longitude": 103.8465437
+          },
+          "geo_cluster_id": "central",
+          "address": "New Bridge Rd, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Hong Lim Park, located in the Downtown Core, is Singapore's designated Speakers' Corner, where locals can engage in open-air public speeches and debates.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.2,
+          "tags": [
+            "heritage",
+            "political",
+            "public speaking",
+            "downtown",
+            "cultural"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 6.86,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 23,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 32,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 20,
+                "cost_sgd": 21.2,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        }
+      ]
+    },
+    {
+      "cluster_id": "north",
+      "cluster_name": "Northern Singapore",
+      "places_count": 6,
+      "average_distance_km": 5.88,
+      "recommended_travel_mode": "MRT",
+      "places": [
+        {
+          "place_id": "ChIJ59JC2zAR2jERBRxd5jtZKL8",
+          "name": "Upper Peirce Reservoir Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3731053,
+            "longitude": 103.8119088
+          },
+          "geo_cluster_id": "north",
+          "address": "Along Old Upper Thomson Road",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Upper Peirce Reservoir Park is a tranquil retreat beside the reservoir, offering picturesque views and a peaceful environment for nature lovers.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.6,
+          "tags": [
+            "reservoir",
+            "nature",
+            "scenic",
+            "relaxation",
+            "outdoor"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 4.98,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 19,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 24,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 14,
+                "cost_sgd": 16.5,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJQx3YRtIW2jERTHZ7nC044PM",
+          "name": "Lower Peirce Reservoir Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3720142,
+            "longitude": 103.8257891
+          },
+          "geo_cluster_id": "north",
+          "address": "Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Lower Peirce Reservoir Park is a picturesque park surrounding one of Singapore's oldest reservoirs, featuring a boardwalk through a mature secondary forest.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.6,
+          "tags": [
+            "reservoir",
+            "boardwalk",
+            "nature",
+            "scenic",
+            "forest"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.42,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 20,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 26,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 16,
+                "cost_sgd": 17.6,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJ8fySUBgX2jERcNpUC2DlTlA",
+          "name": "Bishan Active Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3566757,
+            "longitude": 103.8470378
+          },
+          "geo_cluster_id": "north",
+          "address": "Bishan St. 23, Singapore",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Bishan Active Park is a vibrant community space in the heart of Bishan, offering recreational facilities and green spaces for residents and visitors to enjoy.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.2,
+          "tags": [
+            "community park",
+            "recreation",
+            "family-friendly",
+            "local culture",
+            "outdoor activities"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.84,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 21,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 28,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 17,
+                "cost_sgd": 18.6,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJjyjjwCAX2jERxYHvTxAw4X0",
+          "name": "Bishan-Ang Mo Kio Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3634088,
+            "longitude": 103.8435614
+          },
+          "geo_cluster_id": "north",
+          "address": "1384 Ang Mo Kio Ave 1",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Bishan-Ang Mo Kio Park is a sprawling urban oasis designed to serve the residents of both Bishan and Ang Mo Kio, featuring lush landscapes and recreational facilities.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.5,
+          "tags": [
+            "urban park",
+            "recreation",
+            "family-friendly",
+            "green space",
+            "community"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 5.96,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 21,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 28,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 17,
+                "cost_sgd": 18.9,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJkwp7xqUR2jERnoHV9NhCArc",
+          "name": "Petir Park",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.37559,
+            "longitude": 103.7684583
+          },
+          "geo_cluster_id": "north",
+          "address": "Petir Rd",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Petir Park is a charming neighborhood park located near Bukit Panjang, offering a peaceful setting for relaxation and leisure activities.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.3,
+          "tags": [
+            "neighborhood park",
+            "relaxation",
+            "leisure",
+            "community",
+            "green space"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 6.35,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 22,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 30,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 19,
+                "cost_sgd": 19.9,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        },
+        {
+          "place_id": "ChIJB7tP28IW2jERM5DwKCTpjl0",
+          "name": "Ang Mo Kio Town Garden West",
+          "type": "park",
+          "cost_sgd": null,
+          "onsite_co2_kg": null,
+          "geo": {
+            "latitude": 1.3741468,
+            "longitude": 103.8430281
+          },
+          "geo_cluster_id": "north",
+          "address": "Opposite Ang Mo Kio Town Library, Ang Mo Kio Ave 6",
+          "nearest_mrt": null,
+          "opening_hours": {
+            "monday": null,
+            "tuesday": null,
+            "wednesday": null,
+            "thursday": null,
+            "friday": null,
+            "saturday": null,
+            "sunday": null
+          },
+          "duration_recommended_minutes": null,
+          "ticket_price_sgd": {
+            "adult": null,
+            "child": null,
+            "senior": null
+          },
+          "vegetarian_friendly": null,
+          "low_carbon_score": null,
+          "description": "Ang Mo Kio Town Garden West is a charming urban park nestled in one of Singapore's most populous residential areas, offering a green escape with its lush landscapes and tranquil atmosphere.",
+          "links": {
+            "official": null,
+            "reviews": null
+          },
+          "rating": 4.3,
+          "tags": [
+            "urban park",
+            "nature",
+            "family-friendly",
+            "relaxation",
+            "local culture"
+          ],
+          "travel_from_accommodation": {
+            "distance_km": 6.74,
+            "travel_modes": [
+              {
+                "mode": "MRT",
+                "estimated_time_minutes": 23,
+                "cost_sgd": 2.5,
+                "available": true
+              },
+              {
+                "mode": "Bus",
+                "estimated_time_minutes": 31,
+                "cost_sgd": 1.5,
+                "available": true
+              },
+              {
+                "mode": "Taxi",
+                "estimated_time_minutes": 20,
+                "cost_sgd": 20.9,
+                "available": true
+              }
+            ],
+            "recommended_mode": "MRT"
+          }
+        }
+      ]
+    }
+  ]
+}

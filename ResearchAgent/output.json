@@ -1,0 +1,262 @@
+{
+  "places_found": 13,
+  "attractions_count": 5,
+  "food_count": 8,
+  "requirements": {
+    "attractions_needed": 24,
+    "food_places_needed": 8,
+    "total_needed": 32,
+    "pace_value": 3,
+    "multiplier": 2.0
+  },
+  "time_elapsed": 9.169353723526001,
+  "formatted_places": [
+    {
+      "place_id": "ChIJg7z9zpoR2jERbTVdk9OZ9Uk",
+      "name": "Great Shelford Tree",
+      "type": "attraction",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.3275824,
+        "longitude": 103.8115127
+      },
+      "address": "43 Shelford Rd, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.9,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJQ6QPiwkZ2jERIISQDrknWdU",
+      "name": "Raffles' Landing Site",
+      "type": "attraction",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.2877221,
+        "longitude": 103.8507561
+      },
+      "address": "179429, 1 Old Parliament Ln, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.3,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJg-yJTXYZ2jER7thPNgFqIfs",
+      "name": "Floating Island Mural by Jaxton Su",
+      "type": "attraction",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.3132046,
+        "longitude": 103.8566518
+      },
+      "address": "Serangoon Rd, 450, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.7,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJq1GINgIZ2jERpf7_tdOg8Ks",
+      "name": "Chinatown",
+      "type": "attraction",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.2817119,
+        "longitude": 103.8449995
+      },
+      "address": "230 South Bridge Rd, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.5,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJE16JNjcZ2jERYbhDzx0SV_o",
+      "name": "Mirror Fountain Railways",
+      "type": "attraction",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.2968024,
+        "longitude": 103.8505394
+      },
+      "address": "65 Bras Basah Rd, #B1-03 MRT, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.3,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJLXhQg6UZ2jER_QGp15ggBTY",
+      "name": "Osteria Mozza",
+      "type": "attraction",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.302036,
+        "longitude": 103.8358858
+      },
+      "address": "333 Orchard Rd, Level 5, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.6,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJLZ9DYnIZ2jERQ51Am7WzJLM",
+      "name": "Burnt Ends",
+      "type": "food",
+      "cost_sgd": 60,
+      "geo": {
+        "latitude": 1.304606,
+        "longitude": 103.8089925
+      },
+      "address": "7 Dempsey Rd, #01-02, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.5,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJuTpnZVQZ2jEReDI4VP2u_w0",
+      "name": "MERCI MARCEL ORCHARD",
+      "type": "food",
+      "cost_sgd": 30,
+      "geo": {
+        "latitude": 1.3065784,
+        "longitude": 103.8296124
+      },
+      "address": "390 Orchard Road, 01-03 Palais Renaissance, 390 Orchard Rd, #01 - 03 / 04, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.7,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJjYlQqlMQ2jERNTV5U98WYMY",
+      "name": "iO Italian Osteria - HillV2 (Singapore)",
+      "type": "food",
+      "cost_sgd": 30,
+      "geo": {
+        "latitude": 1.3629771,
+        "longitude": 103.7645031
+      },
+      "address": "4 Hillview Rise, #02 - 01, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.5,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJzUZNrgsZ2jER2epSYaG6Gyg",
+      "name": "Restaurant Ibid",
+      "type": "food",
+      "cost_sgd": null,
+      "geo": {
+        "latitude": 1.2864337,
+        "longitude": 103.8483365
+      },
+      "address": "18 N Canal Rd, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.9,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJEU6YevQZ2jER4gbYl-0KQss",
+      "name": "Waterfall Ristorante Italiano",
+      "type": "attraction",
+      "cost_sgd": 60,
+      "geo": {
+        "latitude": 1.3117795,
+        "longitude": 103.8261646
+      },
+      "address": "22 Orange Grove Rd, Level One, Garden Wing, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.6,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJcTm7VAwZ2jERKhEYYOyi754",
+      "name": "Birds of a Feather",
+      "type": "food",
+      "cost_sgd": 30,
+      "geo": {
+        "latitude": 1.282205,
+        "longitude": 103.8475758
+      },
+      "address": "115 Amoy St, #01-01, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.4,
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "place_id": "ChIJoQvLtqkZ2jERKOVZn48aivQ",
+      "name": "MERCI MARCEL CLUB STREET",
+      "type": "food",
+      "cost_sgd": 30,
+      "geo": {
+        "latitude": 1.2826433,
+        "longitude": 103.8471483
+      },
+      "address": "7-9 Club St, Singapore",
+      "description": "A place in Singapore",
+      "links": {
+        "official": null
+      },
+      "rating": 4.7,
+      "tags": [
+        "food"
+      ]
+    }
+  ]
+}
