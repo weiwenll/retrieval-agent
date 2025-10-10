@@ -9,7 +9,7 @@
     "pace_value": 3,
     "multiplier": 2.0
   },
-  "time_elapsed": 36.89941620826721,
+  "time_elapsed": 46.820290088653564,
   "formatted_places": [
     {
       "place_id": "ChIJg7z9zpoR2jERbTVdk9OZ9Uk",
@@ -426,6 +426,48 @@
       ]
     },
     {
+      "place_id": "ChIJQ6MVplUZ2jERn1LmNH0DlDA",
+      "name": "Universal Studios Singapore",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2540421,
+        "longitude": 103.8238084
+      },
+      "geo_cluster_id": "south",
+      "address": "8 Sentosa Gateway, Singapore 098269",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "10:00AM7:00PM",
+        "tuesday": "10:00AM7:00PM",
+        "wednesday": "10:00AM7:00PM",
+        "thursday": "10:00AM5:00PM",
+        "friday": "10:00AM5:00PM",
+        "saturday": "10:00AM5:00PM",
+        "sunday": "10:00AM7:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Universal Studios Singapore (abbreviation: USS) is a theme park located within the Resorts World Sentosa integrated resort at Sentosa in Singapore. It features 24 rides, shows, and attractions in seven themed zones. It is one of the five Universal Studios theme parks around the world.\nIt was a key component of the Genting Singapore's bid for the right to build Singapore's second integrated resort (IR). On 8 December 2006, the Singapore government announced that the consortium had won the bid. Construction of the theme park and the rest of the resort started on 19 April 2007. It is the second Universal Studios theme park in Asia, the other being Universal Studios Japan in Osaka, and the first in Southeast Asia. Official plans for the park were first unveiled to the public when Universal Studios Singapore released a map of the entire park on 20 October 2009. Universal Studios Singapore attracted more than 2 million visitors in the 9 months from its opening.\nThe park officially began operations on 28 May 2011. Over 3 million guests visited the park in its opening year. Since then, Universal Studios Singapore has had approximately 4 million visitors every year. Visitors are made up of local Singaporeans and international tourists. It has been marketed by Universal Destinations & Experiences as a \"one-of-its-kind theme park in Asia\" and that the park was the only one of its kind in Southeast Asia for the foreseeable future. According to the AECOM Theme Index Global Attraction Attendance Report, Universal Studios Singapore is one of the top visited amusement/theme parks worldwide.\n\n",
+      "links": {
+        "official": "https://www.rwsentosa.com/en/play/universal-studios-singapore",
+        "reviews": 106784
+      },
+      "rating": 4.6,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
       "place_id": "ChIJxZfX_9gT2jERknwK8es7IHU",
       "name": "River Wonders",
       "type": "attraction",
@@ -463,6 +505,130 @@
         "reviews": 11525
       },
       "rating": 4.4,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJRZxKoYIZ2jERGplsSHebyHM",
+      "name": "Marina City Tourist Hub",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2913623,
+        "longitude": 103.8584892
+      },
+      "geo_cluster_id": "central",
+      "address": "6 Raffles Blvd, #01-207 Marina Square, Singapore 039594",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "Closed",
+        "tuesday": "9:00AM7:00PM",
+        "wednesday": "9:00AM7:00PM",
+        "thursday": "9:00AM7:00PM",
+        "friday": "9:00AM7:00PM",
+        "saturday": "9:00AM7:00PM",
+        "sunday": "9:00AM7:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Marina Resort is a recreational and historical destination in Calabar, the capital city of Cross River State, Nigeria. It was built on May 26, 2007, by former governor Donald Duke, to promote tourism in the state. The resort features a variety of attractions, such as a slave history museum, a cinema, a restaurant, a bar, and a waterfront area.",
+      "links": {
+        "official": "https://citytours.sg/",
+        "reviews": 663
+      },
+      "rating": 4.3,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJ9ak4I6wb2jERO6x4oAUh_-g",
+      "name": "Haw Par Villa",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2841526,
+        "longitude": 103.781892
+      },
+      "geo_cluster_id": "west",
+      "address": "262 Pasir Panjang Rd, Singapore 118628",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": "9:00AM8:00PM",
+        "tuesday": "9:00AM8:00PM",
+        "wednesday": "9:00AM8:00PM",
+        "thursday": "9:00AM8:00PM",
+        "friday": "9:00AM8:00PM",
+        "saturday": "9:00AM8:00PM",
+        "sunday": "9:00AM8:00PM"
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [
+        "wheelchair_accessible_entrance"
+      ],
+      "low_carbon_score": null,
+      "description": "Haw Par Villa (Chinese: ; pinyin: Hu Bao Bieshu; Peh-oe-ji: ho pa piat-su) is a theme park located along Pasir Panjang Road in Singapore. The park contains over 1,000 statues and 150 giant dioramas depicting scenes from Chinese Literature, folklore, legends, history, and statuary of key Chinese religions, Taoism, Buddhism and Confucianism. During the 1970s and 1980s, the park was a major local attraction; it is estimated that the park then welcomed at least 1 million annual visitors, and is considered as part of Singapore's cultural heritage. As of 2018, under the park's management firm, Journeys Pte Ltd, efforts to revitalise the park are ongoing with the holding of themed events and the planning and construction of ancillary museums.\n\n",
+      "links": {
+        "official": "https://www.hawparvilla.sg/",
+        "reviews": 6668
+      },
+      "rating": 4.2,
+      "tags": [
+        "attraction"
+      ]
+    },
+    {
+      "place_id": "ChIJqcLWfAAZ2jERb9Yes3vcDG8",
+      "name": "Hop on hop off Treffpunkt",
+      "type": "attraction",
+      "cost_sgd": null,
+      "onsite_co2_kg": null,
+      "geo": {
+        "latitude": 1.2961525,
+        "longitude": 103.859314
+      },
+      "geo_cluster_id": "central",
+      "address": "3 Temasek Blvd, Singapore 038983",
+      "nearest_mrt": null,
+      "opening_hours": {
+        "monday": null,
+        "tuesday": null,
+        "wednesday": null,
+        "thursday": null,
+        "friday": null,
+        "saturday": null,
+        "sunday": null
+      },
+      "duration_recommended_minutes": null,
+      "ticket_price_sgd": {
+        "adult": null,
+        "child": null,
+        "senior": null
+      },
+      "accessibility_options": [],
+      "low_carbon_score": null,
+      "description": "Neukolln (German: [nkln] ), formerly Rixdorf (German: [rksdf]), from 1899 to 1920 an independent city, is a large inner-city quarter of Berlin in the homonymous borough of Neukolln, and evolved around the historic village of Rixdorf. With 162,548 inhabitants (2025) the quarter has the second-largest population of Berlin after Prenzlauer Berg. Since the early 13th century, the local settlements, villages and cities down to the present day have always been a popular destination for colonists and immigrants. In modern times, it was originally shaped by the working class and gastarbeiters, but western immigration since the turn of the millennium has led to gentrification and a rejuvenation of the quarter's culture and nightlife.",
+      "links": {
+        "official": null,
+        "reviews": 3
+      },
+      "rating": 4.7,
       "tags": [
         "attraction"
       ]
@@ -507,48 +673,6 @@
       "rating": 4.6,
       "tags": [
         "park"
-      ]
-    },
-    {
-      "place_id": "ChIJQ6MVplUZ2jERn1LmNH0DlDA",
-      "name": "Universal Studios Singapore",
-      "type": "attraction",
-      "cost_sgd": null,
-      "onsite_co2_kg": null,
-      "geo": {
-        "latitude": 1.2540421,
-        "longitude": 103.8238084
-      },
-      "geo_cluster_id": "south",
-      "address": "8 Sentosa Gateway, Singapore 098269",
-      "nearest_mrt": null,
-      "opening_hours": {
-        "monday": "10:00AM7:00PM",
-        "tuesday": "10:00AM7:00PM",
-        "wednesday": "10:00AM7:00PM",
-        "thursday": "10:00AM5:00PM",
-        "friday": "10:00AM5:00PM",
-        "saturday": "10:00AM5:00PM",
-        "sunday": "10:00AM7:00PM"
-      },
-      "duration_recommended_minutes": null,
-      "ticket_price_sgd": {
-        "adult": null,
-        "child": null,
-        "senior": null
-      },
-      "accessibility_options": [
-        "wheelchair_accessible_entrance"
-      ],
-      "low_carbon_score": null,
-      "description": "Universal Studios Singapore (abbreviation: USS) is a theme park located within the Resorts World Sentosa integrated resort at Sentosa in Singapore. It features 24 rides, shows, and attractions in seven themed zones. It is one of the five Universal Studios theme parks around the world.\nIt was a key component of the Genting Singapore's bid for the right to build Singapore's second integrated resort (IR). On 8 December 2006, the Singapore government announced that the consortium had won the bid. Construction of the theme park and the rest of the resort started on 19 April 2007. It is the second Universal Studios theme park in Asia, the other being Universal Studios Japan in Osaka, and the first in Southeast Asia. Official plans for the park were first unveiled to the public when Universal Studios Singapore released a map of the entire park on 20 October 2009. Universal Studios Singapore attracted more than 2 million visitors in the 9 months from its opening.\nThe park officially began operations on 28 May 2011. Over 3 million guests visited the park in its opening year. Since then, Universal Studios Singapore has had approximately 4 million visitors every year. Visitors are made up of local Singaporeans and international tourists. It has been marketed by Universal Destinations & Experiences as a \"one-of-its-kind theme park in Asia\" and that the park was the only one of its kind in Southeast Asia for the foreseeable future. According to the AECOM Theme Index Global Attraction Attendance Report, Universal Studios Singapore is one of the top visited amusement/theme parks worldwide.\n\n",
-      "links": {
-        "official": "https://www.rwsentosa.com/en/play/universal-studios-singapore",
-        "reviews": 106784
-      },
-      "rating": 4.6,
-      "tags": [
-        "attraction"
       ]
     },
     {
@@ -755,132 +879,6 @@
         "reviews": 1468
       },
       "rating": 5,
-      "tags": [
-        "attraction"
-      ]
-    },
-    {
-      "place_id": "ChIJnXwAOKAZ2jERAs-MHs1aDgI",
-      "name": "CQ @ Clarke Quay",
-      "type": "attraction",
-      "cost_sgd": null,
-      "onsite_co2_kg": null,
-      "geo": {
-        "latitude": 1.2906024,
-        "longitude": 103.8464742
-      },
-      "geo_cluster_id": "central",
-      "address": "3 River Valley Rd, Singapore 179024",
-      "nearest_mrt": null,
-      "opening_hours": {
-        "monday": null,
-        "tuesday": null,
-        "wednesday": null,
-        "thursday": null,
-        "friday": null,
-        "saturday": null,
-        "sunday": null
-      },
-      "duration_recommended_minutes": null,
-      "ticket_price_sgd": {
-        "adult": null,
-        "child": null,
-        "senior": null
-      },
-      "accessibility_options": [
-        "wheelchair_accessible_entrance"
-      ],
-      "low_carbon_score": null,
-      "description": "Clarke Quay is a historical riverside quay in Singapore, located within the Singapore River Planning Area. The quay is situated upstream from the mouth of the Singapore River and Boat Quay.",
-      "links": {
-        "official": "https://www.capitaland.com/sg/malls/clarkequay/en.html",
-        "reviews": 44811
-      },
-      "rating": 4.5,
-      "tags": [
-        "attraction"
-      ]
-    },
-    {
-      "place_id": "ChIJGeWzwMUZ2jERUmSzZCF_59M",
-      "name": "Istana Park",
-      "type": "park",
-      "cost_sgd": null,
-      "onsite_co2_kg": null,
-      "geo": {
-        "latitude": 1.2992392,
-        "longitude": 103.8438178
-      },
-      "geo_cluster_id": "central",
-      "address": "Bounded by Orchard Road Penang Road, Penang Lane and, Buyong Rd, Singapore",
-      "nearest_mrt": null,
-      "opening_hours": {
-        "monday": "Open 24 hours",
-        "tuesday": "Open 24 hours",
-        "wednesday": "Open 24 hours",
-        "thursday": "Open 24 hours",
-        "friday": "Open 24 hours",
-        "saturday": "Open 24 hours",
-        "sunday": "Open 24 hours"
-      },
-      "duration_recommended_minutes": null,
-      "ticket_price_sgd": {
-        "adult": null,
-        "child": null,
-        "senior": null
-      },
-      "accessibility_options": [
-        "wheelchair_accessible_entrance"
-      ],
-      "low_carbon_score": null,
-      "description": "The Istana Park is a park in the Civic District of Singapore. Bounded by Buyong Road, Penang Road, Orchard Road, and Penang Lane, Istana Park is opposite the Istana, which is the namesake of the park. The park has two buildings: My Art Space, a studio-cafe, and the Istana Heritage Gallery, a gallery focusing on the Istana's history.\nThe Istana Park was conceptualised in February 1992 as a more prominent entrance for the Istana and the Civic District; construction began in January 1994. The park was officially opened on 6 September 1996, although it had been open to the public since December 1995; in 1998, it was added to the Civic District Heritage Trail. My Art Space and the Istana Heritage Gallery opened in March 2014 and October 2017. Current redevelopment plans for the park, including expanding the park and integrating it better with the Istana's entrance, form part of the plans to revitalise Orchard Road.\nThe Festival Arch serves as the centrepiece of the park and the gateway to Orchard Road. At the arch's base is a reflecting pool, accompanied by three rows of tall and dwarf coconut palm trees, two of which are dwarfs planted within pools to give the illusion that they are growing out of the water. The park's facilities and plants are illuminated as part of a plan to light up the Civic District.",
-      "links": {
-        "official": "https://www.nparks.gov.sg/contact-us",
-        "reviews": 620
-      },
-      "rating": 4.3,
-      "tags": [
-        "park"
-      ]
-    },
-    {
-      "place_id": "ChIJ4ddWE6AZ2jERsWZK8-xeBaE",
-      "name": "Clarke Quay Jetty",
-      "type": "attraction",
-      "cost_sgd": null,
-      "onsite_co2_kg": null,
-      "geo": {
-        "latitude": 1.2899373,
-        "longitude": 103.8462288
-      },
-      "geo_cluster_id": "central",
-      "address": "Singapore",
-      "nearest_mrt": null,
-      "opening_hours": {
-        "monday": "9:00AM11:00PM",
-        "tuesday": "9:00AM11:00PM",
-        "wednesday": "9:00AM11:00PM",
-        "thursday": "9:00AM11:00PM",
-        "friday": "9:00AM11:00PM",
-        "saturday": "9:00AM11:00PM",
-        "sunday": "9:00AM11:00PM"
-      },
-      "duration_recommended_minutes": null,
-      "ticket_price_sgd": {
-        "adult": null,
-        "child": null,
-        "senior": null
-      },
-      "accessibility_options": [
-        "wheelchair_accessible_entrance"
-      ],
-      "low_carbon_score": null,
-      "description": "Clarke Quay is a historical riverside quay in Singapore, located within the Singapore River Planning Area. The quay is situated upstream from the mouth of the Singapore River and Boat Quay.",
-      "links": {
-        "official": "https://rivercruise.com.sg/",
-        "reviews": 315
-      },
-      "rating": 4.5,
       "tags": [
         "attraction"
       ]

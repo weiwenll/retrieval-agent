@@ -1,0 +1,607 @@
+{
+  "requirements": {
+    "destination_city": "Singapore",
+    "trip_dates": {
+      "start_date": "2025-12-10",
+      "end_date": "2025-12-15"
+    },
+    "duration_days": 5,
+    "budget": 2600,
+    "pace": "relaxed",
+    "optional": {
+      "eco_preferences": "high",
+      "dietary_preferences": "vegan",
+      "interests": [
+        "gardens",
+        "light_walks",
+        "cultural_shows",
+        "riverfronts"
+      ],
+      "uninterests": [
+        "zoo"
+      ],
+      "accessibility_needs": "wheelchair_friendly",
+      "accommodation_location": {
+        "lat": 1.2931,
+        "lon": 103.8558,
+        "neighborhood": "Clarke Quay"
+      },
+      "group_type": "family"
+    }
+  },
+  "retrieval": {
+    "retrieval_id": "ret_2025_08_29_001",
+    "places_matrix": {
+      "nodes": [
+        {
+          "place_id": "accommodation",
+          "name": "Accommodation",
+          "coordinates": {
+            "lat": 1.2966,
+            "lng": 103.8558
+          },
+          "place_type": "lodging",
+          "rating": 0.0,
+          "is_accommodation": true
+        },
+        {
+          "place_id": "ChIJzSo8wgUZ2jERJpnN4bW6q9o",
+          "name": "Gardens by the Bay",
+          "coordinates": {
+            "lat": 1.2816,
+            "lng": 103.8636
+          },
+          "place_type": "park, tourist_attraction",
+          "rating": 4.4,
+          "is_accommodation": false,
+          "low_carbon_score": null,
+          "cost_sgd": null
+        },
+        {
+          "place_id": "ChIJ_-jgb4QZ2jER3bKrHgHOC1k",
+          "name": "Singapore Botanic Gardens",
+          "coordinates": {
+            "lat": 1.3138,
+            "lng": 103.8159
+          },
+          "place_type": "park, tourist_attraction",
+          "rating": 4.6,
+          "is_accommodation": false
+        },
+        {
+          "place_id": "ChIJK7U6qQoZ2jER1iH2iHH1X7Q",
+          "name": "National Gallery Singapore",
+          "coordinates": {
+            "lat": 1.2905,
+            "lng": 103.8517
+          },
+          "place_type": "museum, art_gallery",
+          "rating": 4.3,
+          "is_accommodation": false
+        },
+        {
+          "place_id": "ChIJQ8T-xwUZ2jERj9wbdBmO5dA",
+          "name": "ArtScience Museum",
+          "coordinates": {
+            "lat": 1.2859,
+            "lng": 103.8593
+          },
+          "place_type": "museum, tourist_attraction",
+          "rating": 4.2,
+          "is_accommodation": false
+        },
+        {
+          "place_id": "ChIJG-u3p_4Z2jERz3qO2hgL3z0",
+          "name": "Merlion Park",
+          "coordinates": {
+            "lat": 1.2869,
+            "lng": 103.8547
+          },
+          "place_type": "park, tourist_attraction",
+          "rating": 4.1,
+          "is_accommodation": false
+        }
+      ]
+    },
+    "connection_matrix": {
+      "total_unique_connections": 15,
+      "connections": [
+        {
+          "connection_id": 1,
+          "from_place_id": "accommodation",
+          "to_place_id": "ChIJzSo8wgUZ2jERJpnN4bW6q9o",
+          "from_place_name": "Accommodation",
+          "to_place_name": "Gardens by the Bay",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 2.8,
+              "duration_minutes": 34,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "2.8 km, 34 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 3.5,
+              "duration_minutes": 12,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.140,
+              "route_summary": "3.5 km, 12 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 3.5,
+              "duration_minutes": 8,
+              "cost_sgd": 8.75,
+              "carbon_kg": 0.735,
+              "route_summary": "3.5 km, 8 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 2,
+          "from_place_id": "accommodation",
+          "to_place_id": "ChIJ_-jgb4QZ2jER3bKrHgHOC1k",
+          "from_place_name": "Accommodation",
+          "to_place_name": "Singapore Botanic Gardens",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 4.2,
+              "duration_minutes": 51,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "4.2 km, 51 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 5.1,
+              "duration_minutes": 22,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.204,
+              "route_summary": "5.1 km, 22 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 5.1,
+              "duration_minutes": 14,
+              "cost_sgd": 12.75,
+              "carbon_kg": 1.071,
+              "route_summary": "5.1 km, 14 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 3,
+          "from_place_id": "accommodation",
+          "to_place_id": "ChIJK7U6qQoZ2jER1iH2iHH1X7Q",
+          "from_place_name": "Accommodation",
+          "to_place_name": "National Gallery Singapore",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 0.9,
+              "duration_minutes": 11,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "0.9 km, 11 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 1.2,
+              "duration_minutes": 8,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.048,
+              "route_summary": "1.2 km, 8 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 1.2,
+              "duration_minutes": 5,
+              "cost_sgd": 3.00,
+              "carbon_kg": 0.252,
+              "route_summary": "1.2 km, 5 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 4,
+          "from_place_id": "accommodation",
+          "to_place_id": "ChIJQ8T-xwUZ2jERj9wbdBmO5dA",
+          "from_place_name": "Accommodation",
+          "to_place_name": "ArtScience Museum",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 1.5,
+              "duration_minutes": 18,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "1.5 km, 18 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 2.1,
+              "duration_minutes": 10,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.084,
+              "route_summary": "2.1 km, 10 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 2.1,
+              "duration_minutes": 6,
+              "cost_sgd": 5.25,
+              "carbon_kg": 0.441,
+              "route_summary": "2.1 km, 6 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 5,
+          "from_place_id": "accommodation",
+          "to_place_id": "ChIJG-u3p_4Z2jERz3qO2hgL3z0",
+          "from_place_name": "Accommodation",
+          "to_place_name": "Merlion Park",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 1.1,
+              "duration_minutes": 13,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "1.1 km, 13 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 1.8,
+              "duration_minutes": 9,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.072,
+              "route_summary": "1.8 km, 9 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 1.8,
+              "duration_minutes": 6,
+              "cost_sgd": 4.50,
+              "carbon_kg": 0.378,
+              "route_summary": "1.8 km, 6 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 6,
+          "from_place_id": "ChIJzSo8wgUZ2jERJpnN4bW6q9o",
+          "to_place_id": "ChIJ_-jgb4QZ2jER3bKrHgHOC1k",
+          "from_place_name": "Gardens by the Bay",
+          "to_place_name": "Singapore Botanic Gardens",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 6.8,
+              "duration_minutes": 82,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "6.8 km, 82 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 8.2,
+              "duration_minutes": 28,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.328,
+              "route_summary": "8.2 km, 28 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 8.2,
+              "duration_minutes": 15,
+              "cost_sgd": 20.50,
+              "carbon_kg": 1.722,
+              "route_summary": "8.2 km, 15 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 7,
+          "from_place_id": "ChIJzSo8wgUZ2jERJpnN4bW6q9o",
+          "to_place_id": "ChIJK7U6qQoZ2jER1iH2iHH1X7Q",
+          "from_place_name": "Gardens by the Bay",
+          "to_place_name": "National Gallery Singapore",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 2.3,
+              "duration_minutes": 28,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "2.3 km, 28 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 3.1,
+              "duration_minutes": 16,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.124,
+              "route_summary": "3.1 km, 16 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 3.1,
+              "duration_minutes": 9,
+              "cost_sgd": 7.75,
+              "carbon_kg": 0.651,
+              "route_summary": "3.1 km, 9 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 8,
+          "from_place_id": "ChIJzSo8wgUZ2jERJpnN4bW6q9o",
+          "to_place_id": "ChIJQ8T-xwUZ2jERj9wbdBmO5dA",
+          "from_place_name": "Gardens by the Bay",
+          "to_place_name": "ArtScience Museum",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 1.2,
+              "duration_minutes": 14,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "1.2 km, 14 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 1.8,
+              "duration_minutes": 12,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.072,
+              "route_summary": "1.8 km, 12 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 1.8,
+              "duration_minutes": 5,
+              "cost_sgd": 4.50,
+              "carbon_kg": 0.378,
+              "route_summary": "1.8 km, 5 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 9,
+          "from_place_id": "ChIJzSo8wgUZ2jERJpnN4bW6q9o",
+          "to_place_id": "ChIJG-u3p_4Z2jERz3qO2hgL3z0",
+          "from_place_name": "Gardens by the Bay",
+          "to_place_name": "Merlion Park",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 2.1,
+              "duration_minutes": 25,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "2.1 km, 25 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 2.8,
+              "duration_minutes": 14,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.112,
+              "route_summary": "2.8 km, 14 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 2.8,
+              "duration_minutes": 7,
+              "cost_sgd": 7.00,
+              "carbon_kg": 0.588,
+              "route_summary": "2.8 km, 7 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 10,
+          "from_place_id": "ChIJ_-jgb4QZ2jER3bKrHgHOC1k",
+          "to_place_id": "ChIJK7U6qQoZ2jER1iH2iHH1X7Q",
+          "from_place_name": "Singapore Botanic Gardens",
+          "to_place_name": "National Gallery Singapore",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 3.8,
+              "duration_minutes": 46,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "3.8 km, 46 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 4.5,
+              "duration_minutes": 18,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.180,
+              "route_summary": "4.5 km, 18 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 4.5,
+              "duration_minutes": 12,
+              "cost_sgd": 11.25,
+              "carbon_kg": 0.945,
+              "route_summary": "4.5 km, 12 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 11,
+          "from_place_id": "ChIJ_-jgb4QZ2jER3bKrHgHOC1k",
+          "to_place_id": "ChIJQ8T-xwUZ2jERj9wbdBmO5dA",
+          "from_place_name": "Singapore Botanic Gardens",
+          "to_place_name": "ArtScience Museum",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 5.2,
+              "duration_minutes": 63,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "5.2 km, 63 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 6.8,
+              "duration_minutes": 32,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.272,
+              "route_summary": "6.8 km, 32 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 6.8,
+              "duration_minutes": 18,
+              "cost_sgd": 17.00,
+              "carbon_kg": 1.428,
+              "route_summary": "6.8 km, 18 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 12,
+          "from_place_id": "ChIJ_-jgb4QZ2jER3bKrHgHOC1k",
+          "to_place_id": "ChIJG-u3p_4Z2jERz3qO2hgL3z0",
+          "from_place_name": "Singapore Botanic Gardens",
+          "to_place_name": "Merlion Park",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 4.1,
+              "duration_minutes": 49,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "4.1 km, 49 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 5.3,
+              "duration_minutes": 26,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.212,
+              "route_summary": "5.3 km, 26 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 5.3,
+              "duration_minutes": 16,
+              "cost_sgd": 13.25,
+              "carbon_kg": 1.113,
+              "route_summary": "5.3 km, 16 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 13,
+          "from_place_id": "ChIJK7U6qQoZ2jER1iH2iHH1X7Q",
+          "to_place_id": "ChIJQ8T-xwUZ2jERj9wbdBmO5dA",
+          "from_place_name": "National Gallery Singapore",
+          "to_place_name": "ArtScience Museum",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 1.4,
+              "duration_minutes": 17,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "1.4 km, 17 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 2.8,
+              "duration_minutes": 15,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.112,
+              "route_summary": "2.8 km, 15 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 2.8,
+              "duration_minutes": 7,
+              "cost_sgd": 7.00,
+              "carbon_kg": 0.588,
+              "route_summary": "2.8 km, 7 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 14,
+          "from_place_id": "ChIJK7U6qQoZ2jER1iH2iHH1X7Q",
+          "to_place_id": "ChIJG-u3p_4Z2jERz3qO2hgL3z0",
+          "from_place_name": "National Gallery Singapore",
+          "to_place_name": "Merlion Park",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 0.8,
+              "duration_minutes": 10,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "0.8 km, 10 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 1.5,
+              "duration_minutes": 8,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.060,
+              "route_summary": "1.5 km, 8 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 1.5,
+              "duration_minutes": 4,
+              "cost_sgd": 3.75,
+              "carbon_kg": 0.315,
+              "route_summary": "1.5 km, 4 mins via driving"
+            }
+          ]
+        },
+        {
+          "connection_id": 15,
+          "from_place_id": "ChIJQ8T-xwUZ2jERj9wbdBmO5dA",
+          "to_place_id": "ChIJG-u3p_4Z2jERz3qO2hgL3z0",
+          "from_place_name": "ArtScience Museum",
+          "to_place_name": "Merlion Park",
+          "transport_modes": [
+            {
+              "mode": "walking",
+              "distance_km": 0.9,
+              "duration_minutes": 11,
+              "cost_sgd": 0.00,
+              "carbon_kg": 0.000,
+              "route_summary": "0.9 km, 11 mins via walking"
+            },
+            {
+              "mode": "transit",
+              "distance_km": 1.3,
+              "duration_minutes": 8,
+              "cost_sgd": 0.83,
+              "carbon_kg": 0.052,
+              "route_summary": "1.3 km, 8 mins via transit"
+            },
+            {
+              "mode": "driving",
+              "distance_km": 1.3,
+              "duration_minutes": 4,
+              "cost_sgd": 3.25,
+              "carbon_kg": 0.273,
+              "route_summary": "1.3 km, 4 mins via driving"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

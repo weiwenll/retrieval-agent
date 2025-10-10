@@ -1,0 +1,323 @@
+{
+  "requirements": {
+    "destination_city": "Singapore",
+    "trip_dates": {
+      "start_date": "2025-12-10",
+      "end_date": "2025-12-15"
+    },
+    "duration_days": 4,
+    "budget_total_sgd": 600,
+    "pace": "relaxed",
+    "optional": {
+      "eco_preferences": "high",
+      "dietary_preferences": "vegan",
+      "interests": [
+        "gardens",
+        "light_walks",
+        "cultural_shows",
+        "riverfronts"
+      ],
+      "uninterests": [
+        "zoo"
+      ],
+      "accessibility_needs": "wheelchair_friendly",
+      "accommodation_location": {
+        "lat": 1.2931,
+        "lon": 103.8558,
+        "neighborhood": "Clarke Quay"
+      },
+      "group_type": "family"
+    }
+  },
+  "retrieval": {
+    "retrieval_id": "ret_2025_08_29_001",
+    "candidates": [
+      {
+        "place_id": "Flower Dome",
+        "name": "Flower Dome",
+        "type": "attraction",
+        "cost_sgd": 3, // Cost Range (e.g., 0 = $0–5, 2 = $5–30, 3 = $31–60)
+        "onsite_co2_kg": 20.0, //not transport
+        "geo": {
+          "latitude": 1.28967,
+          "longitude": 103.85007
+        },
+        "geo_cluster_id": "east",
+        "address": "string",
+        "nearest_mrt": "string",
+        "opening_hours": {
+          "monday": "09:00-18:00",
+          "tuesday": "09:00-18:00",
+          "wednesday": "09:00-18:00",
+          "thursday": "09:00-18:00",
+          "friday": "09:00-21:00",
+          "saturday": "09:00-21:00",
+          "sunday": "09:00-21:00"
+        },
+        "duration_recommended_minutes": 120,
+        "ticket_price_sgd": {
+          "adult": 50.0,
+          "child": 5.0,
+          "senior": 10.0
+        },
+        "vegetarian_friendly": true,
+        "low_carbon_score": 8,
+        "description": "short summary",
+        "links": {
+          "official": "https://example.com",
+          "reviews": "https://example.com/reviews"
+        },
+        "tags": [
+          "vegetarian",
+          "hawker"
+        ]
+      },
+      {
+        "place_id": "string",
+        "name": "string",
+        "type": "dining",
+        "cost_sgd": null, // unknown exact cost
+        "onsite_co2_kg": 0.5,
+        "geo": {
+          "latitude": 1.28967,
+          "longitude": 103.85007
+        },
+        "geo_cluster_id": "east",
+        "address": "string",
+        "nearest_mrt": "string",
+        "opening_hours": {
+          "monday": "09:00-18:00",
+          "tuesday": "09:00-18:00",
+          "wednesday": "09:00-18:00",
+          "thursday": "09:00-18:00",
+          "friday": "09:00-21:00",
+          "saturday": "09:00-21:00",
+          "sunday": "09:00-21:00"
+        },
+        "duration_recommended_minutes": 120,
+        "ticket_price_sgd": {},
+        "vegetarian_friendly": true,
+        "low_carbon_score": 8,
+        "description": "short summary",
+        "links": {
+          "official": "https://example.com",
+          "reviews": "https://example.com/reviews"
+        },
+        "tags": [
+          "vegetarian",
+          "hawker"
+        ]
+      },
+      {
+        "place_id": "LITTLE_INDIA_WALK",
+        "name": "String",
+        "type": "heritage",
+        "cost_sgd": 0, // Cost Range (e.g., 0 = $0–5, 2 = $5–30, 3 = $31–60)
+        "onsite_co2_kg": 0.0, //This is good to have. When calculating the co2, can be consider onsite co2 together with transport
+        "geo": {
+          "latitude": 1.28967,
+          "longitude": 103.85007
+        },
+        "geo_cluster_id": "central",
+        "address": "string",
+        "nearest_mrt": "string",
+        "opening_hours": {
+          "monday": "09:00-18:00",
+          "tuesday": "09:00-18:00",
+          "wednesday": "09:00-18:00",
+          "thursday": "09:00-18:00",
+          "friday": "09:00-21:00",
+          "saturday": "09:00-21:00",
+          "sunday": "09:00-21:00"
+        },
+        "duration_recommended_minutes": 120,
+        "ticket_price_sgd": {
+          "adult": 50.0,
+          "child": 5.0,
+          "senior": 10.0
+        },
+        "vegetarian_friendly": true,
+        "low_carbon_score": 8,
+        "description": "short summary",
+        "links": {
+          "official": "https://example.com",
+          "reviews": "https://example.com/reviews"
+        },
+        "tags": [
+          "vegetarian",
+          "hawker"
+        ]
+      },
+      {
+        "place_id": "string",
+        "name": "string",
+        "type": "dining",
+        "cost_sgd": null, // unknown exact cost
+        "onsite_co2_kg": 0.5,
+        "geo": {
+          "latitude": 1.28967,
+          "longitude": 103.85007
+        },
+        "geo_cluster_id": "central",
+        "address": "string",
+        "nearest_mrt": "string",
+        "opening_hours": {
+          "monday": "09:00-18:00",
+          "tuesday": "09:00-18:00",
+          "wednesday": "09:00-18:00",
+          "thursday": "09:00-18:00",
+          "friday": "09:00-21:00",
+          "saturday": "09:00-21:00",
+          "sunday": "09:00-21:00"
+        },
+        "duration_recommended_minutes": 120,
+        "ticket_price_sgd": {},
+        "vegetarian_friendly": true,
+        "low_carbon_score": 8,
+        "description": "short summary",
+        "links": {
+          "official": "https://example.com",
+          "reviews": "https://example.com/reviews"
+        },
+        "tags": [
+          "vegetarian",
+          "hawker"
+        ]
+      }
+    ],
+    "connections": [ //Sparse Connection per geo cluster
+      {
+        "from_id": "HOTEL",
+        "to_id": "FLOWER_DOME",
+        "undirected": false, // keep if direction matters; else true
+        "geo_distance_km": 2.6, // straight-line; optional road_distance_km if available
+        "geo_cluster_id": "east",
+        "modes": {
+          "Walk": {
+            "duration_min": 35,
+            "co2_kg": 0.0,
+            "cost_sgd": 0.0,
+            "route_summary": ""
+          },
+          "MRT": {
+            "duration_min": 18,
+            "co2_kg": 0.04,
+            "cost_sgd": 1.6,
+            "route_summary": ""
+          },
+          "Bus": {
+            "duration_min": 22,
+            "co2_kg": 0.06,
+            "cost_sgd": 1.9,
+            "route_summary": ""
+          },
+          "Taxi": {
+            "duration_min": 10,
+            "co2_kg": 0.40,
+            "cost_sgd": 10.0,
+            "route_summary": ""
+          }
+        }
+      },
+      {
+        "from_id": "FLOWER_DOME",
+        "to_id": "DINING_X",
+        "undirected": true,
+        "geo_distance_km": 0.6,
+        "geo_cluster_id": "east",
+        "modes": {
+          "Walk": {
+            "p50_duration_min": 8,
+            "co2_kg": 0.0,
+            "cost_sgd": 0.0,
+            "route_summary": ""
+          },
+          "MRT": {
+            "p50_duration_min": 12,
+            "co2_kg": 0.02,
+            "cost_sgd": 1.2,
+            "route_summary": ""
+          },
+          "Bus": {
+            "p50_duration_min": 10,
+            "co2_kg": 0.03,
+            "cost_sgd": 1.2,
+            "route_summary": ""
+          },
+          "Taxi": {
+            "p50_duration_min": 5,
+            "co2_kg": 0.12,
+            "cost_sgd": 6.0,
+            "route_summary": ""
+          }
+        }
+      },
+      {
+        "from_id": "HOTEL",
+        "to_id": "LITTLE_INDIA_WALK",
+        "undirected": false,
+        "geo_distance_km": 2.6,
+        "geo_cluster_id": "central",
+        "modes": {
+          "Walk": {
+            "duration_min": 35,
+            "co2_kg": 0.0,
+            "cost_sgd": 0.0,
+            "route_summary": ""
+          },
+          "MRT": {
+            "duration_min": 18,
+            "co2_kg": 0.04,
+            "cost_sgd": 1.6,
+            "route_summary": ""
+          },
+          "Bus": {
+            "duration_min": 22,
+            "co2_kg": 0.06,
+            "cost_sgd": 1.9,
+            "route_summary": ""
+          },
+          "Taxi": {
+            "duration_min": 10,
+            "co2_kg": 0.40,
+            "cost_sgd": 10.0,
+            "route_summary": ""
+          }
+        }
+      },
+      {
+        "from_id": "LITTLE_INDIA_WALK",
+        "to_id": "DINING_X",
+        "undirected": true,
+        "geo_distance_km": 0.6,
+        "geo_cluster_id": "central",
+        "modes": {
+          "Walk": {
+            "p50_duration_min": 8,
+            "co2_kg": 0.0,
+            "cost_sgd": 0.0,
+            "route_summary": ""
+          },
+          "MRT": {
+            "p50_duration_min": 12,
+            "co2_kg": 0.02,
+            "cost_sgd": 1.2,
+            "route_summary": ""
+          },
+          "Bus": {
+            "p50_duration_min": 10,
+            "co2_kg": 0.03,
+            "cost_sgd": 1.2,
+            "route_summary": ""
+          },
+          "Taxi": {
+            "p50_duration_min": 5,
+            "co2_kg": 0.12,
+            "cost_sgd": 6.0,
+            "route_summary": ""
+          }
+        }
+      }
+    ]
+  }
+}

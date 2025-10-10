@@ -81,9 +81,9 @@ def load_input_file(file_path: str) -> dict:
 # Test with different input files
 print("Available input files:")
 try:
-    for file in os.listdir('../inputs'):
+    for file in os.listdir('./inputs'):
         if file.endswith('.json'):
-            print(f"  ../inputs/{file}")
+            print(f"  ./inputs/{file}")
 except FileNotFoundError:
     print("No inputs directory found")
 
@@ -93,7 +93,8 @@ except FileNotFoundError:
 # - Returns raw data objects from API calls without any formatting
 # - Has the calculate_required_places method
 
-from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia
+from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia, fetch_place_enrichments, remove_unicode
+from tool_clustering import calculate_geo_cluster
 import time
 
 # Common interest mappings dictionary (covers ~80% of typical user interests)
@@ -632,30 +633,75 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
             return True
         return False
 
-    def search_with_requirements(self, location, keyword, min_rating, max_results_needed):
+    def search_with_requirements(self, location, keyword, min_rating, max_results_needed, search_type='attraction'):
         """
-        Helper to search with automatic result limiting and radius expansion.
-        Expands search radius and pages if insufficient results found.
-        """
-        # Determine pages needed (20 results per page)
-        pages_needed = min(3, (max_results_needed + 19) // 20)
+        Helper to search with progressive radius, pages, and rating relaxation.
 
-        # Try different radii if not enough results (progressive expansion)
-        radii_to_try = [5000, 10000, 15000, 20000]  # meters (5km to 20km)
+        Strategy progressively expands search area AND relaxes rating requirements:
+        - Attractions: Start at 4.0 rating, can go down to 3.0 or accept anything
+        - Food: Start at 4.5 rating, only go down to 3.8 (maintain food quality)
+
+        Args:
+            location: Location dict with lat/lng
+            keyword: Search keyword
+            min_rating: Initial minimum rating (can be overridden by strategy)
+            max_results_needed: Target number of results
+            search_type: 'attraction' or 'food' (determines rating relaxation strategy)
+
+        Returns:
+            List of places (up to max_results_needed)
+        """
+        # Progressive search strategies
+        attraction_strategies = [
+            {'radius': 5000,  'pages': 1, 'min_rating': 4.0},  # Start strict
+            {'radius': 7500,  'pages': 2, 'min_rating': 3.9},  # Small relaxation
+            {'radius': 10000, 'pages': 2, 'min_rating': 3.8},  # Gradual decline
+            {'radius': 12500, 'pages': 2, 'min_rating': 3.7},  # Mid-point
+            {'radius': 15000, 'pages': 3, 'min_rating': 3.5},  # Accept decent places
+            {'radius': 17500, 'pages': 3, 'min_rating': 3.3},  # Getting desperate
+            {'radius': 20000, 'pages': 3, 'min_rating': 3.0},  # Most of SG
+            {'radius': 25000, 'pages': 3, 'min_rating': 2.5},  # Nearly all SG
+            {'radius': 30000, 'pages': 3, 'min_rating': 2.5},  # Entire island
+            {'radius': 35000, 'pages': 3, 'min_rating': 2.5},  # Include offshore islands
+        ]
+
+        food_strategies = [
+            {'radius': 5000,  'pages': 1, 'min_rating': 4.5},  # Start very strict
+            {'radius': 7500,  'pages': 2, 'min_rating': 4.4},  # Slight relaxation
+            {'radius': 10000, 'pages': 2, 'min_rating': 4.3},  # Still high quality
+            {'radius': 12500, 'pages': 2, 'min_rating': 4.2},  # Very good food
+            {'radius': 15000, 'pages': 3, 'min_rating': 4.1},  # Above 4.0
+            {'radius': 17500, 'pages': 3, 'min_rating': 4.0},  # Good threshold
+            {'radius': 20000, 'pages': 3, 'min_rating': 3.9},  # Most of SG
+            {'radius': 25000, 'pages': 3, 'min_rating': 3.8},  # Nearly all SG
+            {'radius': 30000, 'pages': 3, 'min_rating': 3.7},  # Entire island
+            {'radius': 35000, 'pages': 3, 'min_rating': 3.5},  # Absolute minimum
+        ]
+
+        # Select strategy based on search type
+        strategies = food_strategies if search_type == 'food' else attraction_strategies
+
         all_results = []
 
-        for radius in radii_to_try:
+        for level, strategy in enumerate(strategies, 1):
             if len(all_results) >= max_results_needed:
+                print(f"Target reached: {len(all_results)}/{max_results_needed} for '{keyword}'")
                 break
 
-            logger.info(f"Searching '{keyword}' radius={radius}m, pages={pages_needed}, need {max_results_needed - len(all_results)} more")
+            radius = strategy['radius']
+            max_pages = strategy['pages']
+            current_min_rating = strategy['min_rating']
+
+            still_needed = max_results_needed - len(all_results)
+            logger.info(f"[Level {level}/{len(strategies)}] Searching '{keyword}' at radius={radius}m, pages={max_pages}, rating>={current_min_rating} (need {still_needed} more)")
+            print(f"  [{level}/{len(strategies)}] {keyword}: {radius/1000}km, {max_pages}pg, rating>={current_min_rating:.1f}...")
 
             results = search_places(
                 location=location,
                 keyword=keyword,
                 radius=radius,
-                max_pages=pages_needed,
-                min_rating=min_rating
+                max_pages=max_pages,
+                min_rating=current_min_rating
             )
 
             # Deduplicate by place_id
@@ -663,43 +709,134 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
             new_results = [p for p in results if p.get('place_id') not in existing_ids]
 
             all_results.extend(new_results)
-            logger.info(f"Found {len(new_results)} new results at radius {radius}m (total: {len(all_results)})")
+            logger.info(f"Found {len(new_results)} new results at level {level} (total: {len(all_results)})")
+            print(f"      -> +{len(new_results)} new (total: {len(all_results)}/{max_results_needed})")
 
             # If we got enough, stop expanding
             if len(all_results) >= max_results_needed:
+                print(f"Target reached for '{keyword}'")
                 break
 
-            # If no new results and already at max pages, try next radius
-            if not new_results and pages_needed >= 3:
+            # If no new results at current level, continue to next level
+            if not new_results:
+                print(f"      WARNING: No new results, trying next level...")
                 continue
+
+        # Return up to max_results_needed
+        final_count = min(len(all_results), max_results_needed)
+        if final_count < max_results_needed:
+            print(f"WARNING: Only found {final_count}/{max_results_needed} for '{keyword}' (type: {search_type})")
 
         return all_results[:max_results_needed]
 
     # === FORMATTING METHODS ===
 
-    def format_results(self, raw_places: List[Dict]) -> List[Dict]:
+    def format_results(self, raw_places: List[Dict], enrichments: Dict = None) -> List[Dict]:
         """
         Format raw places from search into structured schema.
         This is the only formatting method - takes raw results and formats them.
-        """
-        return [self._format_single_place(p) for p in raw_places]
 
-    def _format_single_place(self, place_data: Dict) -> Dict:
-        """Format single place from raw API data to structured schema."""
+        Args:
+            raw_places: List of raw place data from search API
+            enrichments: Optional dict with 'details' and 'wikipedia' data
+            from fetch_place_enrichments()
+
+        Returns:
+            List of formatted place dictionaries
+        """
+        if not enrichments:
+            enrichments = {'details': {}, 'wikipedia': {}}
+
+        details_by_id = enrichments.get('details', {})
+        wikipedia_by_name = enrichments.get('wikipedia', {})
+
+        formatted_places = []
+        for place in raw_places:
+            place_id = place.get('place_id')
+            place_name = place.get('name')
+
+            # Get enrichment data for this place
+            details_data = details_by_id.get(place_id)
+            wikipedia_summary = wikipedia_by_name.get(place_name)
+
+            # Format the place with enriched data
+            formatted_place = self._format_single_place(place, details_data, wikipedia_summary)
+            formatted_places.append(formatted_place)
+
+        return formatted_places
+
+    def _format_single_place(self, place_data: Dict, details_data: Dict = None, wikipedia_summary: str = None) -> Dict:
+        """
+        Format single place from raw API data to structured schema.
+
+        Args:
+            place_data: Raw place data from search API
+            details_data: Optional detailed data from get_place_details
+            wikipedia_summary: Optional Wikipedia summary
+        """
+        # Merge details if available
+        if details_data:
+            place_data = {**place_data, **details_data}
+
+        # Extract geo coordinates
+        geo = self._extract_geo(place_data)
+
+        # Calculate geo cluster ID
+        geo_cluster_id = None
+        if geo and geo.get('latitude') and geo.get('longitude'):
+            geo_cluster_id = calculate_geo_cluster(geo['latitude'], geo['longitude'])
+
+        # Extract opening hours if available
+        opening_hours = {
+            "monday": None,
+            "tuesday": None,
+            "wednesday": None,
+            "thursday": None,
+            "friday": None,
+            "saturday": None,
+            "sunday": None
+        }
+        if place_data.get('opening_hours'):
+            opening_hours = self._parse_opening_hours(place_data['opening_hours'])
+
+        # Extract reviews count (user_ratings_total)
+        reviews_count = place_data.get('user_ratings_total')
+
+        # Extract accessibility options
+        accessibility_options = []
+        if place_data.get('wheelchair_accessible_entrance'):
+            accessibility_options.append("wheelchair_accessible_entrance")
+
+        # Get raw text fields
+        name = place_data.get('name', 'Unknown Place')
+        address = place_data.get('formatted_address') or place_data.get('vicinity')
+        all_types = place_data.get('types', [])
+        place_type = self._map_to_standard_type(all_types)
+        description = wikipedia_summary or f"A {place_type} in Singapore"
+
         return {
             "place_id": place_data.get('place_id'),
-            "name": place_data.get('name', 'Unknown Place'),
-            "type": self._map_to_standard_type(place_data.get('types', [])[0] if place_data.get('types') else None),
+            "name": remove_unicode(name),
+            "type": place_type,
             "cost_sgd": self._map_price_level_to_cost(place_data.get('price_level')),
             "onsite_co2_kg": None,
-            "geo": self._extract_geo(place_data),
-            "address": place_data.get('formatted_address') or place_data.get('vicinity'),
+            "geo": geo,
+            "geo_cluster_id": geo_cluster_id,
+            "address": remove_unicode(address) if address else None,
             "nearest_mrt": None,
+            "opening_hours": opening_hours,
+            "duration_recommended_minutes": None,
+            "ticket_price_sgd": {
+                "adult": None,
+                "child": None,
+                "senior": None
+            },
+            "accessibility_options": accessibility_options,
             "low_carbon_score": None,
-            "description": f"A place in Singapore",
-            "links": {"official": place_data.get('website'), "reviews": None},
+            "description": remove_unicode(description),
+            "links": {"official": place_data.get('website'), "reviews": reviews_count},
             "rating": place_data.get('rating'),
-            "tags": [self._map_to_standard_type(place_data.get('types', [])[0] if place_data.get('types') else None)]
+            "tags": [place_type]
         }
 
     def _extract_geo(self, place_data: Dict) -> Optional[Dict]:
@@ -710,23 +847,144 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
         location = geometry.get('location', {})
         return {"latitude": location.get('lat'), "longitude": location.get('lng')}
 
-    def _map_to_standard_type(self, google_type: str) -> str:
-        """Map Google Places type to standard type."""
-        if not google_type:
+    def _map_to_standard_type(self, google_types) -> str:
+        """
+        Map Google Places types to standard type.
+        Prioritizes specific types over generic ones.
+
+        Args:
+            google_types: Either a string (single type) or list of types from Google API
+
+        Returns:
+            Standard type string
+        """
+        # Handle single string input (backwards compatibility)
+        if isinstance(google_types, str):
+            google_types = [google_types]
+
+        if not google_types:
             return "attraction"
-        mapping = {
-            "tourist_attraction": "attraction", "point_of_interest": "attraction",
-            "restaurant": "food", "food": "food", "cafe": "cafe", "bar": "bar",
-            "bakery": "bakery", "park": "park", "museum": "museum",
-            "shopping_mall": "shopping", "lodging": "accommodation", "hotel": "accommodation"
+
+        # Type mapping with priorities
+        # Priority 1: Food-related (most specific)
+        food_types = {
+            "restaurant": "food",
+            "food": "food",
+            "meal_delivery": "food",
+            "meal_takeaway": "food",
+            "cafe": "cafe",
+            "bar": "bar",
+            "bakery": "bakery",
+            "night_club": "bar"
         }
-        return mapping.get(google_type.lower(), "attraction")
+
+        # Priority 2: Specific attractions
+        attraction_types = {
+            "park": "park",
+            "museum": "museum",
+            "art_gallery": "museum",
+            "tourist_attraction": "attraction",
+            "amusement_park": "attraction",
+            "aquarium": "attraction",
+            "zoo": "attraction"
+        }
+
+        # Priority 3: Shopping and accommodation
+        other_specific = {
+            "shopping_mall": "shopping",
+            "lodging": "accommodation",
+            "hotel": "accommodation"
+        }
+
+        # Priority 4: Generic (lowest priority)
+        generic_types = {
+            "establishment": "attraction",
+            "point_of_interest": "attraction"
+        }
+
+        # Check types in priority order
+        for gtype in google_types:
+            gtype_lower = gtype.lower()
+
+            # Check food types first (highest priority)
+            if gtype_lower in food_types:
+                return food_types[gtype_lower]
+
+        for gtype in google_types:
+            gtype_lower = gtype.lower()
+
+            # Check specific attraction types
+            if gtype_lower in attraction_types:
+                return attraction_types[gtype_lower]
+
+        for gtype in google_types:
+            gtype_lower = gtype.lower()
+
+            # Check other specific types
+            if gtype_lower in other_specific:
+                return other_specific[gtype_lower]
+
+        for gtype in google_types:
+            gtype_lower = gtype.lower()
+
+            # Check generic types last
+            if gtype_lower in generic_types:
+                return generic_types[gtype_lower]
+
+        # Default fallback
+        return "attraction"
 
     def _map_price_level_to_cost(self, price_level: Optional[int]) -> Optional[int]:
         """Map Google's price level (0-4) to SGD cost estimate."""
         if price_level is None:
             return None
         return {0: 0, 1: 15, 2: 30, 3: 60, 4: 100}.get(price_level)
+
+    def _parse_opening_hours(self, opening_hours_data: Dict) -> Dict:
+        """
+        Parse opening hours from Google API response.
+
+        Args:
+            opening_hours_data: Opening hours dict from Google Places API
+
+        Returns:
+            Dict with day names as keys and time strings as values
+        """
+        result = {
+            "monday": None,
+            "tuesday": None,
+            "wednesday": None,
+            "thursday": None,
+            "friday": None,
+            "saturday": None,
+            "sunday": None
+        }
+
+        # Google API provides weekday_text as a list like:
+        # ["Monday: 9:00 AM – 5:00 PM", "Tuesday: 9:00 AM – 5:00 PM", ...]
+        weekday_text = opening_hours_data.get('weekday_text', [])
+
+        day_mapping = {
+            'monday': 'monday',
+            'tuesday': 'tuesday',
+            'wednesday': 'wednesday',
+            'thursday': 'thursday',
+            'friday': 'friday',
+            'saturday': 'saturday',
+            'sunday': 'sunday'
+        }
+
+        for entry in weekday_text:
+            # Entry format: "Monday: 9:00 AM – 5:00 PM" or "Monday: Closed"
+            if ':' in entry:
+                day_part, hours_part = entry.split(':', 1)
+                day_name = day_part.strip().lower()
+                hours = hours_part.strip()
+
+                if day_name in day_mapping:
+                    result[day_mapping[day_name]] = remove_unicode(hours)
+
+        return result
 
 
 # ## Places Research Agent - Formatting Implementation (DEPRECATED)
@@ -1442,6 +1700,7 @@ def research_places(input_file: str, output_file: str = None) -> dict:
     print(f"Mapped interests: {mapped_interests}")
 
     # Search attractions
+    print(f"\n=== Searching for Attractions ===")
     attraction_results = []
     for interest in mapped_interests:
         if agent.check_timeout(start_time):
@@ -1453,10 +1712,37 @@ def research_places(input_file: str, output_file: str = None) -> dict:
         min_rating = 3.5 if interest == 'shopping_mall' else 4.0
         results = agent.search_with_requirements(
             location, interest, min_rating,
-            requirements['attractions_needed'] - len(attraction_results)
+            requirements['attractions_needed'] - len(attraction_results),
+            search_type='attraction'
         )
         attraction_results.extend(results)
-        print(f"Found {len(results)} {interest} places (total attractions: {len(attraction_results)})")
+        print(f"  Total attractions so far: {len(attraction_results)}/{requirements['attractions_needed']}\n")
+
+    # Fallback mechanism: if still not enough results, try broader keywords
+    if len(attraction_results) < requirements['attractions_needed']:
+        fallback_keywords = ['attraction', 'establishment']
+        print(f"\n=== Insufficient results ({len(attraction_results)}/{requirements['attractions_needed']}). Trying fallback keywords ===")
+
+        for fallback_keyword in fallback_keywords:
+            if agent.check_timeout(start_time):
+                break
+            if len(attraction_results) >= requirements['attractions_needed']:
+                print(f"Reached target with fallback: {len(attraction_results)}/{requirements['attractions_needed']} attractions")
+                break
+
+            print(f"Trying fallback keyword: '{fallback_keyword}'")
+            results = agent.search_with_requirements(
+                location, fallback_keyword, 4.0,
+                requirements['attractions_needed'] - len(attraction_results),
+                search_type='attraction'
+            )
+
+            # Deduplicate with existing results
+            existing_ids = {p.get('place_id') for p in attraction_results}
+            new_results = [p for p in results if p.get('place_id') not in existing_ids]
+
+            attraction_results.extend(new_results)
+            print(f"  Added {len(new_results)} new places with '{fallback_keyword}' (total: {len(attraction_results)}/{requirements['attractions_needed']})\n")
 
     # Search food - extract food-related interests from user interests
     food_interests = [i for i in user_interests if any(
@@ -1467,6 +1753,7 @@ def research_places(input_file: str, output_file: str = None) -> dict:
     print(f"Food interests: {food_interests}")
     print(f"Food search terms: {food_search_terms}")
 
+    print(f"\n=== Searching for Food Places ===")
     food_results = []
     for food_term in food_search_terms:
         if agent.check_timeout(start_time):
@@ -1475,18 +1762,27 @@ def research_places(input_file: str, output_file: str = None) -> dict:
             print(f"Reached target: {len(food_results)}/{requirements['food_places_needed']} food places")
             break
 
-        # Use rating 4.0+ for food to ensure quality
-        min_food_rating = 4.0
+        # Use rating 4.5+ for food to start (will be relaxed by strategy)
+        min_food_rating = 4.5
         results = agent.search_with_requirements(
             location, food_term, min_food_rating,
-            requirements['food_places_needed'] - len(food_results)
+            requirements['food_places_needed'] - len(food_results),
+            search_type='food'
         )
         food_results.extend(results)
-        print(f"Found {len(results)} {food_term} places (total food: {len(food_results)})")
+        print(f"  Total food places so far: {len(food_results)}/{requirements['food_places_needed']}\n")
 
-    # Format places
+    # Combine all places
     all_places = attraction_results + food_results
-    formatted_places = agent.format_results(all_places)
+    print(f"\n=== Total places collected: {len(all_places)} ===")
+
+    # Fetch enrichments (details + Wikipedia) concurrently
+    print(f"\n=== Fetching enrichments for all places ===")
+    enrichments = fetch_place_enrichments(all_places, fetch_details=True, fetch_wikipedia=True)
+
+    # Format places with enriched data
+    print(f"\n=== Formatting {len(all_places)} places ===")
+    formatted_places = agent.format_results(all_places, enrichments)
 
     elapsed = time.time() - start_time
 
@@ -1523,4 +1819,4 @@ if __name__ == "__main__":
         print(f"Found {result['places_found']} places")
     else:
         print("Usage: python main.py <input_file> [output_file]")
-        print("Example: python main.py inputs/simple_input.json")
+        print("Example: python main.py inputs/input.json outputs/output.json")
