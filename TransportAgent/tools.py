@@ -1,12 +1,16 @@
 """
-Transport Tools for Google Routes API Integration
-Handles API calls to get transport options between locations
+Enhanced Transport Tools for Google Routes API Integration
+- TWO_WHEELER not used (motorbikes not relevant for tourists)
+- Converts walking >2km to cycling category
+- Creates transit route summaries
 """
 
 import requests
 import time
 import logging
 import threading
+import json
+import os
 from typing import Dict, List, Tuple, Optional, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import (
@@ -14,7 +18,8 @@ from config import (
     GOOGLE_ROUTES_API_URL,
     CONCURRENT_CONFIG,
     TRANSPORT_THRESHOLDS,
-    estimate_taxi_cost
+    estimate_taxi_cost,
+    EMISSION_FACTORS
 )
 
 logger = logging.getLogger(__name__)
@@ -23,6 +28,9 @@ logger = logging.getLogger(__name__)
 _rate_limit_lock = threading.Lock()
 _last_request_time = {"time": 0}
 _min_delay_between_requests = 0.5  # 500ms between requests
+
+# Store raw Google Maps responses for debugging
+_raw_responses = []
 
 
 def compute_route(
@@ -37,7 +45,7 @@ def compute_route(
     Args:
         origin: Dict with 'latitude' and 'longitude' keys
         destination: Dict with 'latitude' and 'longitude' keys
-        travel_mode: One of 'DRIVE', 'TWO_WHEELER', 'TRANSIT', 'WALK'
+        travel_mode: One of 'DRIVE', 'TRANSIT', 'WALK'
         language: Language code for response
 
     Returns:
@@ -71,7 +79,7 @@ def compute_route(
         "units": "METRIC"
     }
 
-    # Only add routing preference for DRIVE mode (not allowed for WALK, BICYCLE, TRANSIT)
+    # Only add routing preference for DRIVE mode (not allowed for WALK, TRANSIT)
     if travel_mode == "DRIVE":
         request_body["routingPreference"] = "TRAFFIC_AWARE"
         request_body["routeModifiers"] = {
@@ -108,6 +116,16 @@ def compute_route(
 
         if response.status_code == 200:
             data = response.json()
+
+            # Store raw response for debugging
+            _raw_responses.append({
+                "travel_mode": travel_mode,
+                "origin": origin,
+                "destination": destination,
+                "response": data,
+                "timestamp": time.time()
+            })
+
             if "routes" in data and len(data["routes"]) > 0:
                 logger.info(f"Successfully retrieved route for {travel_mode}")
                 return data["routes"][0]
@@ -127,9 +145,51 @@ def compute_route(
         return None
 
 
+def create_transit_summary(transit_steps: List[Dict]) -> str:
+    """
+    Create human-readable transit summary from transit steps.
+
+    Example: "Take MRT Red Line to Raffles, then Bus 174 to destination"
+
+    Args:
+        transit_steps: List of transit step dicts with 'line' and 'vehicle'
+
+    Returns:
+        Human-readable summary string
+    """
+    if not transit_steps:
+        return "Direct public transport"
+
+    summary_parts = []
+    for i, step in enumerate(transit_steps):
+        line_name = step.get("line", "Unknown")
+        vehicle_type = step.get("vehicle", "Unknown").lower()
+
+        # Simplify vehicle type names
+        if "subway" in vehicle_type or "metro" in vehicle_type or "mrt" in vehicle_type.lower():
+            vehicle = "MRT"
+        elif "bus" in vehicle_type:
+            vehicle = "Bus"
+        elif "train" in vehicle_type:
+            vehicle = "Train"
+        else:
+            vehicle = vehicle_type.capitalize()
+
+        if i == 0:
+            summary_parts.append(f"Take {vehicle} {line_name}")
+        else:
+            summary_parts.append(f"then {vehicle} {line_name}")
+
+    return ", ".join(summary_parts)
+
+
 def parse_route_data(route: Dict[str, Any], travel_mode: str) -> Dict[str, Any]:
     """
     Parse Google Routes API response into standardized format.
+
+    - Creates cycling category for walking >2km
+    - Adds transit summary
+    - Includes raw transit steps for reference
 
     Args:
         route: Route data from API
@@ -189,10 +249,11 @@ def parse_route_data(route: Dict[str, Any], travel_mode: str) -> Dict[str, Any]:
             "duration_seconds": duration_seconds,
         }
 
-        # Add transit-specific data
+        # Add transit-specific data with summary
         if travel_mode == "TRANSIT":
             result["num_transfers"] = num_transfers
             result["transit_steps"] = transit_steps
+            result["transit_summary"] = create_transit_summary(transit_steps)
             result["walking_distance_km"] = round(walking_distance_m / 1000.0, 2)
 
         # Estimate cost
@@ -211,38 +272,37 @@ def parse_route_data(route: Dict[str, Any], travel_mode: str) -> Dict[str, Any]:
         return None
 
 
-def get_transport_options(
-    origin: Dict[str, float],
-    destination: Dict[str, float],
-    modes: Optional[List[str]] = None
-) -> Dict[str, Any]:
+def convert_walking_to_cycling(walking_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Get transport options for all modes between two locations.
+    Convert walking route to cycling estimate for distances > 2km.
+
+    Cycling assumptions:
+    - Average speed: 15 km/h (leisurely pace)
+    - Duration = distance / speed
+    - No cost
 
     Args:
-        origin: Dict with 'latitude' and 'longitude' keys
-        destination: Dict with 'latitude' and 'longitude' keys
-        modes: List of modes to check (default: all modes)
+        walking_data: Walking route data
 
     Returns:
-        Dict mapping mode names to route data
+        Cycling route data (estimated, not from API)
     """
-    if modes is None:
-        modes = ["DRIVE", "TWO_WHEELER", "TRANSIT", "WALK"]
+    distance_km = walking_data.get("distance_km", 0)
 
-    results = {}
+    # Estimate cycling duration (15 km/h average)
+    cycling_speed_kmh = 15.0
+    duration_hours = distance_km / cycling_speed_kmh
+    duration_minutes = duration_hours * 60
 
-    for mode in modes:
-        logger.info(f"Fetching route for mode: {mode}")
-        route = compute_route(origin, destination, mode)
-        parsed = parse_route_data(route, mode)
-
-        if parsed:
-            results[mode] = parsed
-        else:
-            logger.warning(f"No route data for mode: {mode}")
-
-    return results
+    return {
+        "travel_mode": "CYCLING",
+        "distance_km": distance_km,
+        "distance_meters": walking_data.get("distance_meters", 0),
+        "duration_minutes": round(duration_minutes, 1),
+        "duration_seconds": int(duration_minutes * 60),
+        "estimated_cost_sgd": 0.0,
+        "note": "Estimated based on walking route (not from Google API)"
+    }
 
 
 def get_transport_options_concurrent(
@@ -253,16 +313,19 @@ def get_transport_options_concurrent(
     """
     Get transport options for all modes concurrently (parallel API calls).
 
+    - Walking >2km converted to cycling
+    - Walking <=5km still shown
+
     Args:
         origin: Dict with 'latitude' and 'longitude' keys
         destination: Dict with 'latitude' and 'longitude' keys
-        modes: List of modes to check (default: all modes)
+        modes: List of modes to check (default: DRIVE, TRANSIT, WALK)
 
     Returns:
         Dict mapping mode names to route data
     """
     if modes is None:
-        modes = ["DRIVE", "TWO_WHEELER", "TRANSIT", "WALK"]
+        modes = ["DRIVE", "TRANSIT", "WALK"]  # TWO_WHEELER removed
 
     results = {}
 
@@ -290,71 +353,23 @@ def get_transport_options_concurrent(
                 mode = futures[future]
                 logger.error(f"Error fetching route for {mode}: {e}")
 
+    # Process walking results: convert >2km to cycling, keep <=5km as walking
+    if "WALK" in results:
+        walking_data = results["WALK"]
+        distance_km = walking_data.get("distance_km", 0)
+
+        if distance_km > 2.0:
+            # Create cycling option
+            cycling_data = convert_walking_to_cycling(walking_data)
+            results["CYCLING"] = cycling_data
+            logger.info(f"Created cycling option for {distance_km}km route")
+
+            # Only keep walking if <=5km
+            if distance_km > 5.0:
+                logger.info(f"Removing walking option ({distance_km}km > 5km threshold)")
+                del results["WALK"]
+
     return results
-
-
-def filter_transport_options(transport_options: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Filter transport options based on practicality thresholds.
-
-    Args:
-        transport_options: Dict of transport mode data from get_transport_options
-
-    Returns:
-        Filtered dict with impractical options removed and flags added
-    """
-    filtered = {}
-
-    for mode, data in transport_options.items():
-        if not data:
-            continue
-
-        keep = True
-        flags = []
-
-        # Walking filters
-        if mode == "WALK":
-            if data["distance_km"] > TRANSPORT_THRESHOLDS["walking"]["max_distance_km"]:
-                keep = False
-                flags.append(f"Distance {data['distance_km']}km exceeds max {TRANSPORT_THRESHOLDS['walking']['max_distance_km']}km")
-            if data["duration_minutes"] > TRANSPORT_THRESHOLDS["walking"]["max_duration_minutes"]:
-                keep = False
-                flags.append(f"Duration {data['duration_minutes']}min exceeds max {TRANSPORT_THRESHOLDS['walking']['max_duration_minutes']}min")
-
-        # Public transport filters
-        elif mode == "TRANSIT":
-            if data.get("num_transfers", 0) > TRANSPORT_THRESHOLDS["public_transport"]["max_transfers"]:
-                keep = False
-                flags.append(f"Transfers {data['num_transfers']} exceeds max {TRANSPORT_THRESHOLDS['public_transport']['max_transfers']}")
-            if data["duration_minutes"] > TRANSPORT_THRESHOLDS["public_transport"]["max_duration_minutes"]:
-                keep = False
-                flags.append(f"Duration {data['duration_minutes']}min exceeds max {TRANSPORT_THRESHOLDS['public_transport']['max_duration_minutes']}min")
-            if data.get("walking_distance_km", 0) > TRANSPORT_THRESHOLDS["public_transport"]["max_walking_portion_km"]:
-                keep = False
-                flags.append(f"Walking portion {data['walking_distance_km']}km exceeds max {TRANSPORT_THRESHOLDS['public_transport']['max_walking_portion_km']}km")
-
-        # Taxi/Drive filters
-        elif mode == "DRIVE":
-            if data.get("estimated_cost_sgd", 0) > TRANSPORT_THRESHOLDS["taxi"]["expensive_threshold_sgd"]:
-                flags.append(f"Expensive: {data['estimated_cost_sgd']} SGD")
-
-        # Bicycle filters
-        elif mode == "TWO_WHEELER":
-            if data["distance_km"] > TRANSPORT_THRESHOLDS["bicycle"]["max_distance_km"]:
-                keep = False
-                flags.append(f"Distance {data['distance_km']}km exceeds max {TRANSPORT_THRESHOLDS['bicycle']['max_distance_km']}km")
-            if data["duration_minutes"] > TRANSPORT_THRESHOLDS["bicycle"]["max_duration_minutes"]:
-                keep = False
-                flags.append(f"Duration {data['duration_minutes']}min exceeds max {TRANSPORT_THRESHOLDS['bicycle']['max_duration_minutes']}min")
-
-        if keep:
-            data["flags"] = flags
-            data["filtered_reason"] = None
-            filtered[mode] = data
-        else:
-            logger.info(f"Filtered out {mode}: {', '.join(flags)}")
-
-    return filtered
 
 
 def batch_process_routes(
@@ -379,19 +394,14 @@ def batch_process_routes(
 
         logger.info(f"Processing route: {origin_name} -> {dest_name}")
 
-        if concurrent:
-            transport_options = get_transport_options_concurrent(origin, destination)
-        else:
-            transport_options = get_transport_options(origin, destination)
-
-        filtered_options = filter_transport_options(transport_options)
+        transport_options = get_transport_options_concurrent(origin, destination)
 
         return {
             "origin": origin_name,
             "destination": dest_name,
             "origin_coords": origin,
             "destination_coords": destination,
-            "transport_options": filtered_options
+            "transport_options": transport_options
         }
 
     # Process all pairs
@@ -416,6 +426,45 @@ def batch_process_routes(
                 logger.error(f"Error processing pair: {e}")
 
     return results
+
+
+def dump_raw_responses(output_file: str = "TransportAgent/transport_response.json"):
+    """
+    Dump all raw Google Maps API responses to JSON file for debugging.
+
+    Args:
+        output_file: Path to output file
+    """
+    try:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w') as f:
+            json.dump({
+                "total_requests": len(_raw_responses),
+                "responses": _raw_responses
+            }, f, indent=2)
+        logger.info(f"Dumped {len(_raw_responses)} raw Google Maps responses to {output_file}")
+    except Exception as e:
+        logger.error(f"Failed to dump raw responses: {e}")
+
+
+def clear_raw_responses():
+    """Clear stored raw responses (call at start of new run)"""
+    global _raw_responses
+    _raw_responses = []
+
+
+def carbon_estimate(mode: str, distance_km: float) -> float:
+    """
+    Estimate carbon emissions for a given transport mode and distance.
+
+    Args:
+        mode: Transport mode (taxi, bus, mrt, cycle, walking, driving)
+        distance_km: Distance traveled in kilometers
+
+    Returns:
+        Carbon emissions in kg CO2
+    """
+    return EMISSION_FACTORS.get(mode, 0.05) * distance_km
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

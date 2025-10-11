@@ -1,0 +1,269 @@
+{
+  "dashboard": {
+    "title": "LLM Monitoring Dashboard",
+    "tags": ["llm", "openai", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total LLM Calls",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "llm_calls_total",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 100, "color": "yellow"},
+                {"value": 500, "color": "red"}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Total Cost (USD)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "llm_cost_usd_total",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 4,
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Total Tokens",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "llm_tokens_input_total + llm_tokens_output_total",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10000, "color": "yellow"},
+                {"value": 100000, "color": "red"}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "(llm_errors_total / llm_calls_total) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "Latency Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "llm_latency_ms",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "id": 6,
+        "title": "Token Usage Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(llm_tokens_input_total[5m])",
+            "refId": "A",
+            "legendFormat": "Input Tokens"
+          },
+          {
+            "expr": "rate(llm_tokens_output_total[5m])",
+            "refId": "B",
+            "legendFormat": "Output Tokens"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      },
+      {
+        "id": 7,
+        "title": "Calls by Operation",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "llm_operation_calls_total",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+      },
+      {
+        "id": 8,
+        "title": "Cost by Operation",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "sum by (operation) (llm_cost_usd_total)",
+            "refId": "A",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 4
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+      },
+      {
+        "id": 9,
+        "title": "Latency Percentiles",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, llm_latency_ms)",
+            "refId": "A",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, llm_latency_ms)",
+            "refId": "B",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, llm_latency_ms)",
+            "refId": "C",
+            "legendFormat": "P99"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "decimals": 0,
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1000, "color": "yellow"},
+                {"value": 3000, "color": "red"}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 24, "x": 0, "y": 20}
+      },
+      {
+        "id": 10,
+        "title": "Call Rate (per minute)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(llm_calls_total[1m]) * 60",
+            "refId": "A",
+            "legendFormat": "Calls/min"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "Calls/min"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      }
+    ],
+    "refresh": "5s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}

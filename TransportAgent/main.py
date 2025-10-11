@@ -107,26 +107,112 @@ class TransportSustainabilityAgent:
         self.available_tools = self._define_transport_tools()
 
         # Known actions mapping (import functions from other modules)
-        from transport_tools import (
+        from tools import (
             get_transport_options_concurrent,
             batch_process_routes,
-            filter_transport_options
+            carbon_estimate
         )
-        from carbon_calculator import (
-            add_carbon_to_transport_options,
-            batch_calculate_carbon,
-            compare_carbon_emissions
-        )
+        # from carbon_calculator import (
+        #     add_carbon_to_transport_options,
+        #     batch_calculate_carbon,
+        #     compare_carbon_emissions
+        # )
 
         self.known_actions = {
             "get_transport_options": get_transport_options_concurrent,
-            "calculate_carbon_emissions": add_carbon_to_transport_options,
             "batch_process_routes": batch_process_routes,
-            "filter_transport_options": filter_transport_options,
-            "batch_calculate_carbon": batch_calculate_carbon,
-            "compare_carbon_emissions": compare_carbon_emissions
+            "carbon_estimate": carbon_estimate,
+            # "calculate_carbon_emissions": add_carbon_to_transport_options,
+            # "batch_calculate_carbon": batch_calculate_carbon,
+            # "compare_carbon_emissions": compare_carbon_emissions
         }
-    
+
+    def __call__(self, message: str) -> Dict:
+        """Execute reasoning and return transport data."""
+        self.messages.append({"role": "user", "content": message})
+        result = self.execute()
+        self.messages.append({"role": "assistant", "content": str(result)})
+        return result
+
+    def execute(self) -> Dict:
+        """Execute with function calling support, return transport data."""
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            temperature=self.temperature,
+            messages=self.messages,
+            tools=self.available_tools,
+            tool_choice="auto"
+        )
+
+        message = response.choices[0].message
+
+        # Handle function calls if present
+        if message.tool_calls:
+            # Add assistant message with tool calls
+            self.messages.append({
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": message.tool_calls
+            })
+
+            all_tool_results = []
+
+            # Execute tool calls
+            for tool_call in message.tool_calls:
+                tool_result = self._execute_tool_call(tool_call)
+                all_tool_results.append({
+                    "tool": tool_call.function.name,
+                    "args": json.loads(tool_call.function.arguments),
+                    "result": tool_result
+                })
+
+                # Add tool result to messages
+                self.messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result, default=str)
+                })
+
+            # Return results from tools
+            return {
+                "reasoning": message.content,
+                "tool_results": all_tool_results,
+                "raw_routes": self._extract_routes_from_results(all_tool_results)
+            }
+
+        return {
+            "reasoning": message.content,
+            "tool_results": [],
+            "raw_routes": []
+        }
+
+    def _execute_tool_call(self, tool_call) -> Dict[str, Any]:
+        """Execute tool call and return raw results."""
+        tool_name = tool_call.function.name
+        tool_args = json.loads(tool_call.function.arguments)
+
+        logger.info(f"TRANSPORT AGENT: Executing {tool_name}")
+
+        if tool_name in self.known_actions:
+            return self.known_actions[tool_name](**tool_args)
+        else:
+            return {"error": f"Unknown tool: {tool_name}"}
+
+    def _extract_routes_from_results(self, tool_results: List[Dict]) -> List[Dict]:
+        """Extract all route data from tool results."""
+        all_routes = []
+        for result in tool_results:
+            if result["tool"] == "batch_process_routes":
+                routes = result.get("result", [])
+                if isinstance(routes, list):
+                    all_routes.extend(routes)
+            elif result["tool"] == "batch_calculate_carbon":
+                # This returns the routes with carbon data added
+                routes = result.get("result", [])
+                if isinstance(routes, list):
+                    all_routes = routes  # Replace with carbon-enriched routes
+        return all_routes
+
     def _get_default_system_prompt(self) -> str:
         """Default system prompt following thought-action-observation pattern."""
         return """
@@ -183,91 +269,163 @@ class TransportSustainabilityAgent:
             3. Include carbon score in final output
         """.strip()
 
-    def _define_transport_tools(self) -> list:
-        """Define available transport tools for the agent."""
-        return []  # Tool definitions not used in this implementation
+    def _define_transport_tools(self) -> List[Dict]:
+        """Define transport tools for LLM function calling."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_transport_options",
+                    "description": "Get transport options (walking, public transport, taxi, bicycle) between two locations with distance, duration, and cost",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "origin": {
+                                "type": "object",
+                                "properties": {
+                                    "latitude": {"type": "number"},
+                                    "longitude": {"type": "number"}
+                                },
+                                "required": ["latitude", "longitude"],
+                                "description": "Origin location coordinates"
+                            },
+                            "destination": {
+                                "type": "object",
+                                "properties": {
+                                    "latitude": {"type": "number"},
+                                    "longitude": {"type": "number"}
+                                },
+                                "required": ["latitude", "longitude"],
+                                "description": "Destination location coordinates"
+                            }
+                        },
+                        "required": ["origin", "destination"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "batch_process_routes",
+                    "description": "Process multiple route pairs efficiently to get transport options for all location pairs at once",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location_pairs": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "origin": {"type": "object"},
+                                        "destination": {"type": "object"},
+                                        "origin_name": {"type": "string"},
+                                        "destination_name": {"type": "string"}
+                                    }
+                                },
+                                "description": "List of location pairs to process"
+                            },
+                            "concurrent": {
+                                "type": "boolean",
+                                "description": "Whether to use concurrent processing (default: true)",
+                                "default": True
+                            }
+                        },
+                        "required": ["location_pairs"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "batch_calculate_carbon",
+                    "description": "Calculate carbon emissions for all transport routes using hardcoded emission factors (driving: 0.21, taxi: 0.22, bus: 0.09, mrt: 0.035, cycle: 0, walking: 0.02 kg CO2/km)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "route_results": {
+                                "type": "array",
+                                "items": {"type": "object"},
+                                "description": "List of route results from batch_process_routes"
+                            }
+                        },
+                        "required": ["route_results"]
+                    }
+                }
+            }
+        ]
 
     def process_places_data(self, places_data: Dict) -> Dict[str, Any]:
         """
-        Process places data and group by geo_cluster_id.
+        Process places data and extract places from nested structure.
 
         Args:
-            places_data: Input data with formatted_places list
+            places_data: Input data with retrieval.places_matrix.candidates structure
 
         Returns:
-            Dict with grouped places and metadata
+            Dict with places list and metadata
         """
-        formatted_places = places_data.get("formatted_places", [])
+        # Extract places from nested structure
+        retrieval = places_data.get("retrieval", {})
+        places_matrix = retrieval.get("places_matrix", {})
+        # Support both "candidates" (new) and "nodes" (old) for backward compatibility
+        formatted_places = places_matrix.get("candidates", places_matrix.get("nodes", []))
 
-        # Group places by geo_cluster_id
-        clusters = {}
-        for place in formatted_places:
-            cluster_id = place.get("geo_cluster_id", "unknown")
-            if cluster_id not in clusters:
-                clusters[cluster_id] = []
-            clusters[cluster_id].append(place)
-
-        logger.info(f"Grouped {len(formatted_places)} places into {len(clusters)} clusters")
+        logger.info(f"Loaded {len(formatted_places)} places from input")
 
         return {
-            "clusters": clusters,
+            "formatted_places": formatted_places,
             "total_places": len(formatted_places),
-            "cluster_count": len(clusters),
             "metadata": {
-                "attractions_count": places_data.get("attractions_count", 0),
-                "food_count": places_data.get("food_count", 0),
-                "places_found": places_data.get("places_found", 0)
+                "attractions_count": retrieval.get("attractions_count", 0),
+                "food_count": retrieval.get("food_count", 0),
+                "places_found": retrieval.get("places_found", 0)
             }
         }
 
     def identify_location_pairs(
         self,
-        clusters: Dict[str, list],
+        places: List[Dict],
         accommodation: Optional[Dict[str, float]] = None
     ) -> list:
         """
         Identify all unique location pairs that need transport calculations.
+        Creates one-way connections: A→B, A→C, B→C (but not B→A, C→A, C→B).
 
         Args:
-            clusters: Dict of places grouped by cluster_id
+            places: List of all places
             accommodation: Optional accommodation location dict
 
         Returns:
-            List of tuples (origin, destination, origin_name, dest_name)
+            List of tuples (origin_coords, dest_coords, origin_name, dest_name)
         """
         pairs = []
 
-        # Get all places as a flat list
-        all_places = []
-        for cluster_places in clusters.values():
-            all_places.extend(cluster_places)
-
-        # Add accommodation to pairs if provided
+        # Add accommodation to all places if provided
         if accommodation:
             acc_location = {
                 "latitude": accommodation.get("lat"),
                 "longitude": accommodation.get("lon", accommodation.get("lng"))
             }
 
-            for place in all_places:
-                place_location = place.get("geo", {})
+            for destination_place in places:
+                destination_location = destination_place.get("geo", {})
                 pairs.append((
                     acc_location,
-                    place_location,
+                    destination_location,
                     "Accommodation",
-                    place.get("name", "Unknown")
+                    destination_place.get("name", "Unknown")
                 ))
 
-        # Add inter-attraction pairs (within same cluster to keep it manageable)
-        for cluster_id, cluster_places in clusters.items():
-            for i, place1 in enumerate(cluster_places):
-                for place2 in cluster_places[i+1:]:
-                    pairs.append((
-                        place1.get("geo", {}),
-                        place2.get("geo", {}),
-                        place1.get("name", "Unknown"),
-                        place2.get("name", "Unknown")
-                    ))
+        # Add all place-to-place pairs (one-way only)
+        # A→B, A→C, A→D, B→C, B→D, C→D
+        for i, origin_place in enumerate(places):
+            for destination_place in places[i+1:]:
+                pairs.append((
+                    origin_place.get("geo", {}),
+                    destination_place.get("geo", {}),
+                    origin_place.get("name", "Unknown"),
+                    destination_place.get("name", "Unknown")
+                ))
 
         logger.info(f"Identified {len(pairs)} location pairs for transport calculation")
 
@@ -282,13 +440,13 @@ class TransportSustainabilityAgent:
         Calculate routes and carbon emissions for all location pairs.
 
         Args:
-            location_pairs: List of location pair tuples
+            location_pairs: List of 4-element tuples (origin_coords, dest_coords, origin_name, dest_name)
             concurrent: Whether to use concurrent processing
 
         Returns:
             List of route results with transport options and carbon data
         """
-        from transport_tools import batch_process_routes
+        from tools import batch_process_routes
         from carbon_calculator import batch_calculate_carbon
 
         logger.info(f"Calculating routes for {len(location_pairs)} location pairs...")
@@ -298,45 +456,149 @@ class TransportSustainabilityAgent:
 
         logger.info(f"Adding carbon emission data...")
 
-        # Add carbon emissions to all routes
-        route_results = batch_calculate_carbon(route_results, use_fallback=False)
+        # Add carbon emissions to all routes using hardcoded emission factors
+        route_results = batch_calculate_carbon(route_results)
 
         logger.info(f"Completed route calculations")
 
         return route_results
 
-    def format_output(self, route_results: list, metadata: Dict) -> Dict:
+    def format_output(self, route_results: list, metadata: Dict, places_data: Dict) -> Dict:
         """
         Format final output with all transport and carbon data.
 
         Args:
             route_results: List of route results with transport options
-            metadata: Metadata about the input data
+            metadata: Metadata about the input data (not used, kept for compatibility)
+            places_data: Original places data with requirements and retrieval structure
 
         Returns:
-            Formatted output dict
+            Formatted output dict preserving input structure with added connection_matrix
         """
-        output = {
-            "metadata": metadata,
-            "total_route_pairs": len(route_results),
-            "route_data": []
-        }
+        # Extract formatted places from nested structure
+        retrieval = places_data.get("retrieval", {})
+        places_matrix = retrieval.get("places_matrix", {})
+        # Support both "candidates" (new) and "nodes" (old) for backward compatibility
+        formatted_places = places_matrix.get("candidates", places_matrix.get("nodes", []))
 
-        for result in route_results:
-            transport_options = result.get("transport_options", {})
-            carbon_comparison = result.get("carbon_comparison", {})
+        # Create mapping from place name to place_id
+        name_to_id = {}
+        for place in formatted_places:
+            name_to_id[place.get("name")] = place.get("place_id")
 
-            route_entry = {
-                "origin": result.get("origin"),
-                "destination": result.get("destination"),
-                "origin_coords": result.get("origin_coords"),
-                "destination_coords": result.get("destination_coords"),
-                "available_transport_modes": list(transport_options.keys()),
-                "transport_details": transport_options,
-                "carbon_comparison": carbon_comparison
+        # Build connection_matrix structure
+        connections = []
+        connection_id = 1
+
+        for route_result in route_results:
+            origin_name = route_result.get("origin")
+            destination_name = route_result.get("destination")
+            transport_options = route_result.get("transport_options", {})
+
+            # Get place IDs
+            if origin_name == "Accommodation":
+                from_place_id = "accommodation"
+                to_place_id = name_to_id.get(destination_name)
+            else:
+                from_place_id = name_to_id.get(origin_name)
+                to_place_id = name_to_id.get(destination_name)
+
+            # Skip if we can't find IDs (shouldn't happen)
+            if not to_place_id or (origin_name != "Accommodation" and not from_place_id):
+                logger.warning(f"Could not find place_id for {origin_name} -> {destination_name}")
+                continue
+
+            # Format transport modes
+            transport_modes = []
+            for mode, mode_data in transport_options.items():
+                # Map API mode names to user-friendly names
+                mode_map = {
+                    "WALK": "walking",
+                    "TRANSIT": "public_transport",
+                    "DRIVE": "taxi",
+                    "CYCLING": "cycle"  # Renamed from cycling to cycle
+                }
+                friendly_mode = mode_map.get(mode, mode.lower())
+
+                # For TRANSIT mode, determine if it's mrt, bus, or public_transport
+                if mode == "TRANSIT" and "transit_summary" in mode_data:
+                    transit_summary = mode_data.get("transit_summary", "").lower()
+                    # Check if it contains both MRT and Bus
+                    has_mrt = "mrt" in transit_summary or "metro" in transit_summary or "train" in transit_summary
+                    has_bus = "bus" in transit_summary
+
+                    if has_mrt and has_bus:
+                        friendly_mode = "public_transport"
+                    elif has_mrt:
+                        friendly_mode = "mrt"
+                    elif has_bus:
+                        friendly_mode = "bus"
+                    else:
+                        friendly_mode = "public_transport"
+
+                distance_km = mode_data.get("distance_km", 0)
+                duration_minutes = mode_data.get("duration_minutes", 0)
+                cost_sgd = mode_data.get("estimated_cost_sgd", 0.0)
+
+                # Calculate carbon emissions using carbon_estimate
+                from tools import carbon_estimate
+                carbon_kg = carbon_estimate(friendly_mode, distance_km)
+
+                # Create route summary
+                route_summary = f"{distance_km} km, {duration_minutes:.0f} mins via {friendly_mode}"
+
+                transport_mode_entry = {
+                    "mode": friendly_mode,
+                    "distance_km": distance_km,
+                    "duration_minutes": round(duration_minutes, 1),
+                    "cost_sgd": round(cost_sgd, 2),
+                    "carbon_kg": round(carbon_kg, 3),
+                    "route_summary": route_summary
+                }
+
+                # Add transit summary if available (for all transit modes)
+                if mode == "TRANSIT" and "transit_summary" in mode_data:
+                    transport_mode_entry["transit_summary"] = mode_data["transit_summary"]
+                    transport_mode_entry["num_transfers"] = mode_data.get("num_transfers", 0)
+
+                # Add note for cycle (custom category)
+                if mode == "CYCLING":
+                    transport_mode_entry["note"] = mode_data.get("note", "")
+
+                transport_modes.append(transport_mode_entry)
+
+            # Add connection entry
+            connection = {
+                "connection_id": connection_id,
+                "from_place_id": from_place_id,
+                "to_place_id": to_place_id,
+                "from_place_name": origin_name,
+                "to_place_name": destination_name,
+                "transport_modes": transport_modes
             }
+            connections.append(connection)
+            connection_id += 1
 
-            output["route_data"].append(route_entry)
+        # Create output structure preserving input structure
+        # Deep copy retrieval object and update structure
+        import copy
+        retrieval = copy.deepcopy(places_data.get("retrieval", {}))
+
+        # Move candidates from places_matrix to same level as conditions
+        if "places_matrix" in retrieval:
+            places_matrix = retrieval.pop("places_matrix")
+            # Support both "candidates" (new) and "nodes" (old) for backward compatibility
+            candidates = places_matrix.get("candidates", places_matrix.get("nodes", []))
+            retrieval["candidates"] = candidates
+
+        # Add connections at same level as conditions (not nested in connection_matrix)
+        retrieval["total_unique_connections"] = len(connections)
+        retrieval["connections"] = connections
+
+        output = {
+            "requirements": places_data.get("requirements", {}),
+            "retrieval": retrieval
+        }
 
         return output
 
@@ -352,8 +614,13 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     """
     import json
     import time
+    from tools import clear_raw_responses, dump_raw_responses
 
     start_time = time.time()
+
+    # Clear any previous raw responses
+    clear_raw_responses()
+    logger.info("Cleared previous raw Google Maps responses")
 
     # Load input data
     logger.info(f"Loading input file: {input_file}")
@@ -363,6 +630,17 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     except Exception as e:
         logger.error(f"Failed to load input file: {e}")
         return
+
+    # Extract accommodation location from input file if not provided
+    if accommodation_location is None:
+        optional = places_data.get("requirements", {}).get("optional", {})
+        input_accommodation = optional.get("accommodation_location", {})
+        if input_accommodation:
+            accommodation_location = {
+                "lat": input_accommodation.get("lat"),
+                "lon": input_accommodation.get("lon", input_accommodation.get("lng"))
+            }
+            logger.info(f"Using accommodation location from input file: {accommodation_location}")
 
     # Initialize agent
     logger.info("Initializing Transport Sustainability Agent")
@@ -375,7 +653,7 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     # Identify location pairs
     logger.info("Identifying location pairs...")
     location_pairs = agent.identify_location_pairs(
-        processed_data["clusters"],
+        processed_data["formatted_places"],
         accommodation_location
     )
 
@@ -385,7 +663,7 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
 
     # Format output
     logger.info("Formatting output...")
-    output = agent.format_output(route_results, processed_data["metadata"])
+    output = agent.format_output(route_results, processed_data["metadata"], places_data)
 
     # Add timing info
     elapsed_time = time.time() - start_time
@@ -400,6 +678,10 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     except Exception as e:
         logger.error(f"Failed to save output: {e}")
 
+    # Dump raw Google Maps responses
+    raw_output_file = output_file.replace(".json", "_raw_responses.json")
+    dump_raw_responses(raw_output_file)
+
     # Print summary
     print(f"\n{'='*80}")
     print(f"TRANSPORT PROCESSING COMPLETE")
@@ -407,6 +689,7 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     print(f"Total location pairs processed: {len(route_results)}")
     print(f"Processing time: {elapsed_time:.2f}s")
     print(f"Output saved to: {output_file}")
+    print(f"Raw Google Maps responses: {raw_output_file}")
     print(f"{'='*80}\n")
 
 

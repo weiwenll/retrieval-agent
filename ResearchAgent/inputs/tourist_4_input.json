@@ -1,9 +1,9 @@
 {
   "trip_dates": {
     "start_date": "2025-12-20",
-    "end_date": "2025-12-24"
+    "end_date": "2025-12-20"
   },
-  "duration_days": 4,
+  "duration_days": 1,
   "budget": 1600,
   "pace": "relaxed",
   "optional": {
@@ -11,7 +11,7 @@
       "tourist attractions"
     ],
     "uninterest": [
-      "zoos", "parks"
+      "gardens", "parks"
     ],
     "accommodation_location": {
       "lat": 1.3294,

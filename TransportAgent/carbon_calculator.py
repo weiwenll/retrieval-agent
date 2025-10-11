@@ -287,28 +287,61 @@ def calculate_carbon_savings(
 
 
 def batch_calculate_carbon(
-    route_results: list[Dict[str, Any]],
-    use_fallback: bool = False
+    route_results: list[Dict[str, Any]]
 ) -> list[Dict[str, Any]]:
     """
-    Calculate carbon emissions for batch route results.
+    Calculate carbon emissions for batch route results using hardcoded emission factors.
+
+    Uses carbon_estimate tool with hardcoded emission factors:
+    - driving: 0.21 kg CO2/km
+    - taxi: 0.22 kg CO2/km
+    - bus: 0.09 kg CO2/km
+    - mrt: 0.035 kg CO2/km
+    - cycle: 0 kg CO2/km
+    - walking: 0.02 kg CO2/km
 
     Args:
         route_results: List of route result dicts from batch_process_routes
-        use_fallback: Whether to use fallback calculation
 
     Returns:
         Updated route results with carbon data
     """
+    from tools import carbon_estimate
+
     for result in route_results:
         transport_options = result.get("transport_options", {})
 
-        # Add carbon data to each transport option
-        updated_options = add_carbon_to_transport_options(transport_options, use_fallback)
-        result["transport_options"] = updated_options
+        # Add carbon data to each transport option using carbon_estimate
+        for mode, data in transport_options.items():
+            if not data:
+                continue
+
+            distance_km = data.get("distance_km", 0)
+
+            # Map API mode names to carbon_estimate mode names
+            mode_map = {
+                "WALK": "walking",
+                "TRANSIT": "mrt",  # Default to mrt for transit
+                "DRIVE": "taxi",
+                "CYCLING": "cycle"
+            }
+            carbon_mode = mode_map.get(mode, mode.lower())
+
+            # Calculate carbon emission
+            carbon_kg = carbon_estimate(carbon_mode, distance_km)
+            data["co2e_kg"] = round(carbon_kg, 3)
+            data["carbon_emission"] = {
+                "transport_mode": carbon_mode,
+                "distance_km": distance_km,
+                "co2e_kg": round(carbon_kg, 3),
+                "co2e_unit": "kg",
+                "co2e_source": "hardcoded_emission_factors"
+            }
+
+        result["transport_options"] = transport_options
 
         # Add carbon comparison
-        result["carbon_comparison"] = compare_carbon_emissions(updated_options)
+        result["carbon_comparison"] = compare_carbon_emissions(transport_options)
 
     return route_results
 

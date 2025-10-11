@@ -26,7 +26,6 @@ CLIMATIQ_API_VERSION = "v1"
 # Transport Mode Mappings for Google Routes API
 GOOGLE_TRAVEL_MODES = {
     "DRIVE": "car",
-    "TWO_WHEELER": "bicycle",
     "TRANSIT": "public_transport",
     "WALK": "walking"
 }
@@ -45,9 +44,9 @@ CLIMATIQ_TRANSPORT_TYPES = {
 # Transport Filtering Thresholds
 TRANSPORT_THRESHOLDS = {
     "walking": {
-        "max_distance_km": 2.0,
-        "max_duration_minutes": 25,
-        "description": "Walking distance threshold"
+        "max_distance_km": 20.0,  # Very permissive - we'll convert >2km to cycling
+        "max_duration_minutes": 240,  # 4 hours max
+        "description": "Walking distance threshold (>2km becomes cycling)"
     },
     "public_transport": {
         "max_transfers": 3,
@@ -101,6 +100,16 @@ FALLBACK_EMISSION_FACTORS = {
     "mrt": 0.041,
     "bicycle": 0.0,
     "walking": 0.0
+}
+
+# Carbon emission factors for simple estimation (kg CO2 per km)
+EMISSION_FACTORS = {
+    "driving": 0.21,
+    "taxi": 0.22,
+    "bus": 0.09,
+    "mrt": 0.035,
+    "cycle": 0,
+    "walking": 0.02
 }
 
 # Geo cluster IDs used in Singapore
