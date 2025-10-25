@@ -1,0 +1,78 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.venv
+venv
+env
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+agent_reasoning.log
+
+# Output files
+*-output.json
+output_raw_responses.json
+retrieval_output.json
+
+# Test files
+.pytest_cache
+.coverage
+htmlcov
+test_*.py
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md
+!README.md
+MONITORING.md
+
+# CI/CD
+.github
+.gitattributes
+
+# Monitoring
+grafana/
+
+# Input/Output directories (not needed in container)
+ResearchAgent/inputs/
+ResearchAgent/outputs/
+ResearchAgent/*-output.json
+TransportAgent/inputs/
+TransportAgent/outputs/
+TransportAgent/*-output.json
+
+# SAM
+.aws-sam
+samconfig.toml

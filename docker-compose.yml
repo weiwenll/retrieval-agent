@@ -1,0 +1,174 @@
+version: '3.8'
+
+# Shared configuration using YAML anchors
+x-common-environment: &common-env
+  GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  CLIMATIQ_API_KEY: ${CLIMATIQ_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  S3_BUCKET: ${S3_BUCKET:-retrieval-agent-data-dev}
+  MAX_PLACES_MULTIPLIER: ${MAX_PLACES_MULTIPLIER:-2}
+  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-southeast-1}
+  # Use IAM role or environment variables instead of mounting credentials
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+  # Lambda runtime interface emulator settings
+  AWS_LAMBDA_FUNCTION_TIMEOUT: 900
+  AWS_LAMBDA_FUNCTION_MEMORY_SIZE: 2048
+  # Development/debugging
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  PYTHONUNBUFFERED: 1
+
+x-common-build: &common-build
+  context: .
+  args:
+    - BUILDKIT_INLINE_CACHE=1
+  cache_from:
+    - ${DOCKER_REGISTRY:-}research-agent:latest
+    - ${DOCKER_REGISTRY:-}transport-agent:latest
+
+services:
+  # LocalStack for S3 emulation in local development
+  localstack:
+    image: localstack/localstack:latest
+    profiles: ["local"]  # Only start with --profile local
+    container_name: localstack
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,ssm
+      - DEBUG=${DEBUG:-0}
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-southeast-1}
+    volumes:
+      - "${TMPDIR:-/tmp}/localstack:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  research-agent:
+    build:
+      <<: *common-build
+      dockerfile: ResearchAgent/Dockerfile
+      target: ${BUILD_TARGET:-production}  # Allow dev/prod builds
+    image: ${DOCKER_REGISTRY:-}research-agent:${VERSION:-latest}
+    container_name: research-agent
+    environment:
+      <<: *common-env
+      AGENT_TYPE: research
+      AWS_LAMBDA_FUNCTION_NAME: research-agent-local
+      # Override S3 endpoint for local development
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}  # Set to http://localstack:4566 for local
+    ports:
+      - "${RESEARCH_PORT:-9000}:8080"
+    networks:
+      - agent-network
+    depends_on:
+      localstack:
+        condition: service_healthy
+        required: false  # LocalStack optional
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/2015-03-31/functions/function/invocations"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # Only mount in development mode, not for production
+      - type: bind
+        source: ${AWS_CREDENTIALS_PATH:-~/.aws}
+        target: /root/.aws
+        read_only: true
+        bind:
+          create_host_path: false
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  transport-agent:
+    build:
+      <<: *common-build
+      dockerfile: TransportAgent/Dockerfile
+      target: ${BUILD_TARGET:-production}
+    image: ${DOCKER_REGISTRY:-}transport-agent:${VERSION:-latest}
+    container_name: transport-agent
+    environment:
+      <<: *common-env
+      AGENT_TYPE: transport
+      AWS_LAMBDA_FUNCTION_NAME: transport-agent-local
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+    ports:
+      - "${TRANSPORT_PORT:-9001}:8080"
+    networks:
+      - agent-network
+    depends_on:
+      research-agent:
+        condition: service_started
+      localstack:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/2015-03-31/functions/function/invocations"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - type: bind
+        source: ${AWS_CREDENTIALS_PATH:-~/.aws}
+        target: /root/.aws
+        read_only: true
+        bind:
+          create_host_path: false
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # API Gateway emulator for local testing
+  api-gateway:
+    image: nginx:alpine
+    profiles: ["api"]  # Only start with --profile api
+    container_name: api-gateway-local
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - agent-network
+    depends_on:
+      - research-agent
+      - transport-agent
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  agent-network:
+    driver: bridge
+    name: tourism-agent-network
+
+volumes:
+  localstack_data:
+    driver: local
