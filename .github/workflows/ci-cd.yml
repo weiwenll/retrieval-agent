@@ -186,8 +186,11 @@ jobs:
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true
         with:
-          sarif_file: 'trivy-*.sarif'
+          sarif_file: |
+            trivy-research-results.sarif
+            trivy-transport-results.sarif
 
       - name: Test ResearchAgent Container
         run: |
