@@ -230,8 +230,6 @@ Resources:
   # API Key
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
-    DependsOn:
-      - ApiGateway
     Properties:
       Name: !Sub 'retrieval-agent-key-${Environment}'
       Description: API Key for Retrieval Agent
@@ -240,8 +238,6 @@ Resources:
   # Usage Plan
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
-    DependsOn:
-      - ApiGateway
     Properties:
       UsagePlanName: !Sub 'retrieval-agent-plan-${Environment}'
       Description: Usage plan for Retrieval Agent API
