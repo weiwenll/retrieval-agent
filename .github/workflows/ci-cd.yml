@@ -1,0 +1,369 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: retrieval-agent
+
+jobs:
+  # ============================================================================
+  # Unit Tests
+  # ============================================================================
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run unit tests
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -d "tests/unit" ]; then
+            pytest tests/unit -v --cov=. --cov-report=xml --cov-report=term
+          else
+            echo "⚠️ No unit tests found, skipping..."
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+  # ============================================================================
+  # Integration Tests
+  # ============================================================================
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test-unit
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run integration tests
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -d "tests/integration" ]; then
+            pytest tests/integration -v
+          else
+            echo "⚠️ No integration tests found, skipping..."
+          fi
+
+  # ============================================================================
+  # SAM Template Validation
+  # ============================================================================
+  validate-template:
+    name: Validate SAM Template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Validate SAM template
+        run: |
+          sam validate --lint
+          echo "✓ SAM template is valid"
+
+  # ============================================================================
+  # Build and Scan Docker Images
+  # ============================================================================
+  build-and-scan:
+    name: Build and Scan Images
+    runs-on: ubuntu-latest
+    needs: [test-unit, validate-template]
+
+    outputs:
+      research-image: ${{ steps.meta.outputs.research-tag }}
+      transport-image: ${{ steps.meta.outputs.transport-tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate image metadata
+        id: meta
+        run: |
+          echo "research-tag=research-agent:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "transport-tag=transport-agent:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build ResearchAgent Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./ResearchAgent/Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.research-tag }}
+          cache-from: type=gha,scope=research
+          cache-to: type=gha,mode=max,scope=research
+          load: true
+
+      - name: Build TransportAgent Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./TransportAgent/Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.transport-tag }}
+          cache-from: type=gha,scope=transport
+          cache-to: type=gha,mode=max,scope=transport
+          load: true
+
+      - name: Run Trivy vulnerability scanner - ResearchAgent
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.research-tag }}
+          format: 'sarif'
+          output: 'trivy-research-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Run Trivy vulnerability scanner - TransportAgent
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.transport-tag }}
+          format: 'sarif'
+          output: 'trivy-transport-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: |
+            trivy-research-results.sarif
+            trivy-transport-results.sarif
+
+      - name: Test ResearchAgent Container
+        run: |
+          echo "Testing ResearchAgent container imports..."
+          docker run --rm ${{ steps.meta.outputs.research-tag }} \
+            python -c "import lambda_handler; print('✓ ResearchAgent imports successful')"
+
+      - name: Test TransportAgent Container
+        run: |
+          echo "Testing TransportAgent container imports..."
+          docker run --rm ${{ steps.meta.outputs.transport-tag }} \
+            python -c "import lambda_handler; print('✓ TransportAgent imports successful')"
+
+  # ============================================================================
+  # Push to ECR (if on main branches)
+  # ============================================================================
+  push-to-ecr:
+    name: Push to ECR
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          else
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create ECR repository if not exists
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }}
+
+      - name: Build and push ResearchAgent
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./ResearchAgent/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-${{ steps.env.outputs.environment }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-latest
+          cache-from: type=gha,scope=research
+          cache-to: type=gha,mode=max,scope=research
+
+      - name: Build and push TransportAgent
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./TransportAgent/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-${{ steps.env.outputs.environment }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-latest
+          cache-from: type=gha,scope=transport
+          cache-to: type=gha,mode=max,scope=transport
+
+  # ============================================================================
+  # Deploy to Development
+  # ============================================================================
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [test-integration, build-and-scan]
+    if: github.ref == 'refs/heads/develop'
+    environment: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: SAM Build
+        run: sam build --use-container --parallel --cached
+
+      - name: SAM Deploy to Dev
+        run: |
+          sam deploy \
+            --stack-name retrieval-agent-dev \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Environment=dev \
+              GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
+              OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
+              ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY }}" \
+              AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+
+      - name: Get Stack Outputs
+        run: |
+          echo "## Deployment Outputs" >> $GITHUB_STEP_SUMMARY
+          aws cloudformation describe-stacks \
+            --stack-name retrieval-agent-dev \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs' \
+            --output table >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Deploy to Production
+  # ============================================================================
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [test-integration, build-and-scan]
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: SAM Build
+        run: sam build --use-container --parallel --cached
+
+      - name: SAM Deploy to Production
+        run: |
+          sam deploy \
+            --stack-name retrieval-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Environment=prod \
+              GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY_PROD }} \
+              OpenAIApiKey=${{ secrets.OPENAI_API_KEY_PROD }} \
+              ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY_PROD }}" \
+              AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY_PROD }}"
+
+      - name: Get Stack Outputs
+        run: |
+          echo "## Production Deployment Outputs" >> $GITHUB_STEP_SUMMARY
+          aws cloudformation describe-stacks \
+            --stack-name retrieval-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs' \
+            --output table >> $GITHUB_STEP_SUMMARY
