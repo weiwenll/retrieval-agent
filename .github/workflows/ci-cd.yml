@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-southeast-1
+  AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REPOSITORY: retrieval-agent
 
 jobs:
@@ -121,6 +121,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-unit, validate-template]
 
+    permissions:
+      contents: read
+      security-events: write
+
     outputs:
       research-image: ${{ steps.meta.outputs.research-tag }}
       transport-image: ${{ steps.meta.outputs.transport-tag }}
@@ -183,9 +187,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: |
-            trivy-research-results.sarif
-            trivy-transport-results.sarif
+          sarif_file: 'trivy-*.sarif'
 
       - name: Test ResearchAgent Container
         run: |
@@ -320,50 +322,50 @@ jobs:
   # ============================================================================
   # Deploy to Production
   # ============================================================================
-  deploy-prod:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [test-integration, build-and-scan]
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-    environment: production
+  # deploy-prod:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   needs: [test-integration, build-and-scan]
+  #   if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+  #   environment: production
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
-          aws-region: ${{ env.AWS_REGION }}
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+  #         aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install AWS SAM CLI
-        uses: aws-actions/setup-sam@v2
+  #     - name: Install AWS SAM CLI
+  #       uses: aws-actions/setup-sam@v2
 
-      - name: SAM Build
-        run: sam build --use-container --parallel --cached
+  #     - name: SAM Build
+  #       run: sam build --use-container --parallel --cached
 
-      - name: SAM Deploy to Production
-        run: |
-          sam deploy \
-            --stack-name retrieval-agent-prod \
-            --region ${{ env.AWS_REGION }} \
-            --capabilities CAPABILITY_IAM \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              Environment=prod \
-              GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY_PROD }} \
-              OpenAIApiKey=${{ secrets.OPENAI_API_KEY_PROD }} \
-              ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY_PROD }}" \
-              AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY_PROD }}"
+  #     - name: SAM Deploy to Production
+  #       run: |
+  #         sam deploy \
+  #           --stack-name retrieval-agent-prod \
+  #           --region ${{ env.AWS_REGION }} \
+  #           --capabilities CAPABILITY_IAM \
+  #           --no-confirm-changeset \
+  #           --no-fail-on-empty-changeset \
+  #           --parameter-overrides \
+  #             Environment=prod \
+  #             GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY_PROD }} \
+  #             OpenAIApiKey=${{ secrets.OPENAI_API_KEY_PROD }} \
+  #             ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY_PROD }}" \
+  #             AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY_PROD }}"
 
-      - name: Get Stack Outputs
-        run: |
-          echo "## Production Deployment Outputs" >> $GITHUB_STEP_SUMMARY
-          aws cloudformation describe-stacks \
-            --stack-name retrieval-agent-prod \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Stacks[0].Outputs' \
-            --output table >> $GITHUB_STEP_SUMMARY
+  #     - name: Get Stack Outputs
+  #       run: |
+  #         echo "## Production Deployment Outputs" >> $GITHUB_STEP_SUMMARY
+  #         aws cloudformation describe-stacks \
+  #           --stack-name retrieval-agent-prod \
+  #           --region ${{ env.AWS_REGION }} \
+  #           --query 'Stacks[0].Outputs' \
+  #           --output table >> $GITHUB_STEP_SUMMARY
