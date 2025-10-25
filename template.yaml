@@ -1,0 +1,314 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Retrieval Agent - Research and Transport microservices
+
+Globals:
+  Function:
+    Timeout: 900  # 15 minutes max for Lambda
+    MemorySize: 2048
+    Environment:
+      Variables:
+        S3_BUCKET: !Ref DataBucket
+        MAX_PLACES_MULTIPLIER: 2
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: ARN of the IAM role for Lambda execution (must have S3 access)
+
+  GoogleMapsApiKey:
+    Type: String
+    NoEcho: true
+    Description: Google Maps API Key
+
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Description: OpenAI API Key
+
+  ClimatiqApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Climatiq API Key (optional)
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Anthropic API Key (optional)
+
+Resources:
+  # S3 Bucket for input/output data
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'retrieval-agent-data-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          - Id: DeleteOldOutputs
+            Status: Enabled
+            Prefix: outputs/
+            ExpirationInDays: 90
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ResearchAgent Lambda Function
+  ResearchAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'research-agent-${Environment}'
+      PackageType: Image
+      Role: !Ref LambdaExecutionRoleArn
+      ImageConfig:
+        Command:
+          - lambda_handler.lambda_handler
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          CLIMATIQ_API_KEY: !Ref ClimatiqApiKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /research
+            Method: POST
+            RestApiId: !Ref ApiGateway
+    Metadata:
+      DockerContext: .
+      Dockerfile: ResearchAgent/Dockerfile
+      DockerTag: latest
+
+  # TransportAgent Lambda Function
+  TransportAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'transport-agent-${Environment}'
+      PackageType: Image
+      ImageConfig:
+        Command:
+          - lambda_handler.lambda_handler
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          CLIMATIQ_API_KEY: !Ref ClimatiqApiKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /transport
+            Method: POST
+            RestApiId: !Ref ApiGateway
+    Metadata:
+      DockerContext: .
+      Dockerfile: TransportAgent/Dockerfile
+      DockerTag: latest
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'retrieval-agent-api-${Environment}'
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'POST, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      Auth:
+        ApiKeyRequired: true
+      DefinitionBody:
+        openapi: 3.0.1
+        info:
+          title: Retrieval Agent API
+          version: 1.0.0
+        paths:
+          /research:
+            post:
+              summary: Research attractions and food places
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      required:
+                        - input_s3_key
+                        - output_s3_key
+                      properties:
+                        input_s3_key:
+                          type: string
+                          description: S3 key for input file
+                        output_s3_key:
+                          type: string
+                          description: S3 key for output file
+                        s3_bucket:
+                          type: string
+                          description: S3 bucket name (optional)
+              responses:
+                '200':
+                  description: Success
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                          summary:
+                            type: object
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResearchAgentFunction.Arn}/invocations'
+          /transport:
+            post:
+              summary: Calculate transport options and carbon emissions
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      required:
+                        - input_s3_key
+                        - output_s3_key
+                      properties:
+                        input_s3_key:
+                          type: string
+                          description: S3 key for input file (output from research)
+                        output_s3_key:
+                          type: string
+                          description: S3 key for output file
+                        s3_bucket:
+                          type: string
+                          description: S3 bucket name (optional)
+              responses:
+                '200':
+                  description: Success
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                          summary:
+                            type: object
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TransportAgentFunction.Arn}/invocations'
+
+  # API Key
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - ApiGateway
+      - ApiGatewayStage
+    Properties:
+      Name: !Sub 'retrieval-agent-key-${Environment}'
+      Description: API Key for Retrieval Agent
+      Enabled: true
+
+  # Usage Plan
+  UsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - ApiGateway
+      - ApiGatewayStage
+    Properties:
+      UsagePlanName: !Sub 'retrieval-agent-plan-${Environment}'
+      Description: Usage plan for Retrieval Agent API
+      ApiStages:
+        - ApiId: !Ref ApiGateway
+          Stage: !Ref Environment
+      Quota:
+        Limit: 1000
+        Period: MONTH
+      Throttle:
+        BurstLimit: 10
+        RateLimit: 5
+
+  # Link API Key to Usage Plan
+  UsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref UsagePlan
+
+  # API Gateway Stage (required for API Key)
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: !Ref Environment
+      DeploymentId: !Ref ApiGatewayDeployment
+
+  # API Gateway Deployment
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ResearchAgentFunction
+      - TransportAgentFunction
+    Properties:
+      RestApiId: !Ref ApiGateway
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiEndpoint'
+
+  ApiKey:
+    Description: API Key ID (use AWS Console to get value)
+    Value: !Ref ApiKey
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiKey'
+
+  DataBucketName:
+    Description: S3 bucket for data storage
+    Value: !Ref DataBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DataBucket'
+
+  ResearchAgentFunctionArn:
+    Description: ResearchAgent Lambda Function ARN
+    Value: !GetAtt ResearchAgentFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ResearchAgentArn'
+
+  TransportAgentFunctionArn:
+    Description: TransportAgent Lambda Function ARN
+    Value: !GetAtt TransportAgentFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TransportAgentArn'
