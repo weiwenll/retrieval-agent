@@ -411,7 +411,7 @@ class PlacesResearchAgent:
         - Food: 2 per day (minimum)
 
         Args:
-            pace: Trip pace (slow, relaxed, moderate, active, fast, intensive)
+            pace: Trip pace (slow, relaxed, moderate, active, fast)
             duration_days: Number of days
             multiplier: Optional multiplier override (default from env or 2)
 
@@ -424,7 +424,6 @@ class PlacesResearchAgent:
             "moderate": 4,
             "active": 5,
             "fast": 6,
-            "intensive": 6
         }
 
         pace_value = pace_mapping.get(pace.lower(), 4)
