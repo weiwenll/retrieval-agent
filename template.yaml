@@ -232,7 +232,6 @@ Resources:
     Type: AWS::ApiGateway::ApiKey
     DependsOn:
       - ApiGateway
-      - ApiGatewayStage
     Properties:
       Name: !Sub 'retrieval-agent-key-${Environment}'
       Description: API Key for Retrieval Agent
@@ -243,7 +242,6 @@ Resources:
     Type: AWS::ApiGateway::UsagePlan
     DependsOn:
       - ApiGateway
-      - ApiGatewayStage
     Properties:
       UsagePlanName: !Sub 'retrieval-agent-plan-${Environment}'
       Description: Usage plan for Retrieval Agent API
@@ -264,23 +262,6 @@ Resources:
       KeyId: !Ref ApiKey
       KeyType: API_KEY
       UsagePlanId: !Ref UsagePlan
-
-  # API Gateway Stage (required for API Key)
-  ApiGatewayStage:
-    Type: AWS::ApiGateway::Stage
-    Properties:
-      RestApiId: !Ref ApiGateway
-      StageName: !Ref Environment
-      DeploymentId: !Ref ApiGatewayDeployment
-
-  # API Gateway Deployment
-  ApiGatewayDeployment:
-    Type: AWS::ApiGateway::Deployment
-    DependsOn:
-      - ResearchAgentFunction
-      - TransportAgentFunction
-    Properties:
-      RestApiId: !Ref ApiGateway
 
 Outputs:
   ApiEndpoint:
