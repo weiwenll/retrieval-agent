@@ -76,6 +76,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'research-agent-${Environment}'
       PackageType: Image
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-latest'
       Role: !Ref LambdaExecutionRoleArn
       ImageConfig:
         Command:
@@ -106,6 +107,8 @@ Resources:
     Properties:
       FunctionName: !Sub 'transport-agent-${Environment}'
       PackageType: Image
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:transport-latest'
+      Role: !Ref LambdaExecutionRoleArn
       ImageConfig:
         Command:
           - lambda_handler.lambda_handler
@@ -117,9 +120,6 @@ Resources:
           OPENAI_API_KEY: !Ref OpenAIApiKey
           CLIMATIQ_API_KEY: !Ref ClimatiqApiKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref DataBucket
       Events:
         ApiEvent:
           Type: Api
