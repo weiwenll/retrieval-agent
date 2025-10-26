@@ -31,6 +31,185 @@ def remove_unicode(text: str) -> str:
 
     return ascii_text
 
+
+def standardize_opening_hours(hours_str: str) -> str:
+    """
+    Standardize opening hours to 24-hour format with proper separators.
+
+    Handles various formats:
+    - "10:00AM7:00PM" → "10:00-19:00"
+    - "12:002:30PM, 3:0010:00PM" → "12:00-14:30,15:00-22:00"
+    - "6:30PM12:00AM" → "18:30-00:00"
+    - "Open 24 hours" or "All Day" → "00:00-23:59"
+    - "Closed" → "Closed"
+    - None or empty string → "00:00-23:59" (default to open all day)
+
+    Args:
+        hours_str: Original hours string from Google API
+
+    Returns:
+        Standardized hours string in 24-hour format
+    """
+    import re
+
+    # NOTE: If no opening hours provided (None or empty), default to open all day
+    # This ensures places without explicit hours are still usable in the itinerary
+    if not hours_str:
+        return "00:00-23:59"
+
+    # Handle special cases
+    hours_lower = hours_str.lower().strip()
+    if "open 24 hours" in hours_lower or "all day" in hours_lower or hours_lower == "24 hours":
+        return "00:00-23:59"
+    if "closed" in hours_lower:
+        return "Closed"
+
+    # Replace various dash characters with standard dash
+    hours_str = re.sub(r'[\u2013\u2014\u2212\u002d]', '-', hours_str)  # En dash, em dash, minus, hyphen
+    hours_str = hours_str.replace('–', '-').replace('—', '-')
+
+    # Helper function to convert 12-hour time to 24-hour format
+    def convert_to_24h(time_str: str, inferred_meridiem: str = None) -> str:
+        """Convert time like '10:00AM' or '2:30PM' to '10:00' or '14:30'"""
+        time_str = time_str.strip()
+
+        # Extract time and AM/PM
+        match = re.match(r'^(\d{1,2}):?(\d{2})\s*(AM|PM)?$', time_str, re.IGNORECASE)
+        if not match:
+            # Fix missing colon if needed (e.g., "1200" → "12:00")
+            if ':' not in time_str and len(time_str) >= 3:
+                if len(time_str) == 3:  # e.g., "300" → "3:00"
+                    time_str = f"{time_str[0]}:{time_str[1:3]}"
+                else:  # e.g., "1200" → "12:00"
+                    time_str = f"{time_str[:-2]}:{time_str[-2:]}"
+            # If still no AM/PM and we have inferred, use it
+            if inferred_meridiem:
+                time_str = time_str + inferred_meridiem
+            match = re.match(r'^(\d{1,2}):?(\d{2})\s*(AM|PM)?$', time_str, re.IGNORECASE)
+            if not match:
+                return time_str
+
+        hour_str, minute, meridiem = match.groups()
+        hour = int(hour_str)
+        minute = int(minute)
+
+        # If no meridiem specified, use inferred or assume already 24-hour
+        if not meridiem:
+            meridiem = inferred_meridiem
+
+        # Convert to 24-hour format
+        if meridiem:
+            meridiem = meridiem.upper()
+            if meridiem == 'PM' and hour != 12:
+                hour += 12
+            elif meridiem == 'AM' and hour == 12:
+                hour = 0
+
+        return f"{hour:02d}:{minute:02d}"
+
+    # Helper function to fix malformed time strings
+    def fix_malformed_time(text: str) -> str:
+        """Fix malformed times like '12:002:30PM' → '12:00-2:30PM'"""
+        # Pattern: HH:MMHH:MMAM/PM (missing dash between times)
+        text = re.sub(r'(\d{1,2}:\d{2})(\d{1,2}:\d{2})', r'\1-\2', text)
+
+        # Pattern: HH:MMAM/PMHH:MMAM/PM (missing dash, with AM/PM)
+        text = re.sub(r'(AM|PM)(\d{1,2}:\d{2})', r'\1-\2', text, flags=re.IGNORECASE)
+
+        # Pattern: HHMMHH:MM (missing colon in first time)
+        text = re.sub(r'(\d{1,2})(\d{2})-(\d{1,2}:\d{2})', r'\1:\2-\3', text)
+
+        # Pattern: HH:MMHHMM (missing colon in second time)
+        text = re.sub(r'(\d{1,2}:\d{2})-(\d{1,2})(\d{2})', r'\1-\2:\3', text)
+
+        return text
+
+    # Fix malformed separators first
+    hours_str = fix_malformed_time(hours_str)
+
+    # Split by comma to handle multiple time periods
+    periods = [p.strip() for p in hours_str.split(',')]
+    standardized_periods = []
+
+    for period in periods:
+        # Pattern for time range: "10:00AM-7:00PM" or "10:00AM7:00PM" or "10:00 AM - 7:00 PM"
+        # Try to find two times with optional dash
+        match = re.match(
+            r'^(\d{1,2}:?\d{0,2})\s*(AM|PM)?\s*-\s*(\d{1,2}:?\d{0,2})\s*(AM|PM)?$',
+            period,
+            re.IGNORECASE
+        )
+
+        if match:
+            start_time, start_meridiem, end_time, end_meridiem = match.groups()
+
+            # Infer meridiem if missing
+            # If end has PM and start doesn't, start is likely AM
+            # If end has AM and start doesn't, both are probably AM
+            # If start has meridiem but end doesn't, and end time < start time, end is likely PM
+            inferred_start = start_meridiem
+            inferred_end = end_meridiem
+
+            if not start_meridiem and end_meridiem:
+                # Infer start based on end
+                end_hour = int(re.match(r'^(\d{1,2})', end_time).group(1))
+                start_hour = int(re.match(r'^(\d{1,2})', start_time).group(1))
+
+                if end_meridiem.upper() == 'PM':
+                    # If end is PM, determine if start is AM or PM
+                    # Heuristic: Use end time to determine context
+                    # - End time 11 PM or later: likely dinner service (PM-PM), e.g., 6PM-11:30PM
+                    # - End time 10:30 PM or earlier: likely all-day operation (AM-PM), e.g., 6:30AM-10:30PM
+
+                    if start_hour > end_hour:
+                        # Wrapping hours: 6PM-11:30PM (6>11 not true), or 11PM-2AM
+                        # This case: start > end means like "11-2" which must be PM-AM wrap
+                        # But for 6-11, this won't trigger. Let me reconsider.
+                        # Actually start_hour=6, end_hour=11, so 6 is NOT > 11
+                        inferred_start = 'PM'
+                    elif start_hour < 6:
+                        # Early morning hours: 3:00-10:00PM likely means 3PM-10PM
+                        inferred_start = 'PM'
+                    else:
+                        # start_hour is 6-12
+                        # Check the end_hour to determine context:
+                        # If end is 11 or 12 (late night), likely dinner service PM-PM
+                        # If end is 10 or earlier, likely all-day AM-PM
+                        if end_hour >= 11:
+                            # Late night end: 6:00-11:30PM = 6PM-11:30PM (dinner)
+                            inferred_start = 'PM'
+                        else:
+                            # Earlier end: 6:30-10:30PM = 6:30AM-10:30PM (all-day)
+                            inferred_start = 'AM'
+                else:  # End is AM
+                    inferred_start = 'AM'
+
+            if start_meridiem and not end_meridiem:
+                # Infer end based on start
+                end_hour = int(re.match(r'^(\d{1,2})', end_time).group(1))
+                start_hour = int(re.match(r'^(\d{1,2})', start_time).group(1))
+
+                if start_meridiem.upper() == 'AM':
+                    # If start is AM, end is likely PM if end_hour < start_hour
+                    if end_hour < start_hour:
+                        inferred_end = 'PM'
+                    else:
+                        inferred_end = 'AM'
+                else:  # Start is PM
+                    inferred_end = 'PM'
+
+            # Convert both times to 24-hour format
+            start_24h = convert_to_24h(start_time + (start_meridiem or ''), inferred_start)
+            end_24h = convert_to_24h(end_time + (end_meridiem or ''), inferred_end)
+
+            standardized_periods.append(f"{start_24h}-{end_24h}")
+        else:
+            # If pattern doesn't match, return original
+            standardized_periods.append(period)
+
+    # Join periods with comma
+    return ','.join(standardized_periods)
+
 def search_places(location, radius=2000, keyword=None, language='en', max_pages=1, min_rating=0.0):
     """
     Search Google Places nearby with pagination support using the old/legacy API.

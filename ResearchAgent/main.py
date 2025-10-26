@@ -93,7 +93,7 @@ except FileNotFoundError:
 # - Returns raw data objects from API calls without any formatting
 # - Has the calculate_required_places method
 
-from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia, fetch_place_enrichments, remove_unicode, generate_tags
+from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia, fetch_place_enrichments, remove_unicode, generate_tags, standardize_opening_hours
 from tool_clustering import calculate_geo_cluster
 from config import COMMON_INTEREST_MAPPINGS, DIETARY_KEYWORDS
 import time
@@ -740,6 +740,8 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
             geo_cluster_id = calculate_geo_cluster(geo['latitude'], geo['longitude'])
 
         # Extract opening hours if available
+        # NOTE: If no opening hours are provided by the API, we default to "00:00-23:59" (open all day)
+        # This ensures that places without explicit hours are still usable in the itinerary
         opening_hours = {
             "monday": None,
             "tuesday": None,
@@ -751,6 +753,18 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
         }
         if place_data.get('opening_hours'):
             opening_hours = self._parse_opening_hours(place_data['opening_hours'])
+        else:
+            # Default to open all day if no hours provided
+            default_hours = "00:00-23:59"
+            opening_hours = {
+                "monday": default_hours,
+                "tuesday": default_hours,
+                "wednesday": default_hours,
+                "thursday": default_hours,
+                "friday": default_hours,
+                "saturday": default_hours,
+                "sunday": default_hours
+            }
 
         # Extract reviews count (user_ratings_total)
         reviews_count = place_data.get('user_ratings_total')
@@ -908,13 +922,13 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
 
     def _parse_opening_hours(self, opening_hours_data: Dict) -> Dict:
         """
-        Parse opening hours from Google API response.
+        Parse opening hours from Google API response and standardize to 24-hour format.
 
         Args:
             opening_hours_data: Opening hours dict from Google Places API
 
         Returns:
-            Dict with day names as keys and time strings as values
+            Dict with day names as keys and standardized time strings as values
         """
         result = {
             "monday": None,
@@ -948,7 +962,16 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
                 hours = hours_part.strip()
 
                 if day_name in day_mapping:
-                    result[day_mapping[day_name]] = remove_unicode(hours)
+                    # Remove unicode and standardize to 24-hour format
+                    hours = remove_unicode(hours)
+                    hours = standardize_opening_hours(hours)
+                    result[day_mapping[day_name]] = hours
+
+        # If no hours were parsed, default all days to open all day
+        if all(v is None for v in result.values()):
+            default_hours = "00:00-23:59"
+            for day in result:
+                result[day] = default_hours
 
         return result
 
