@@ -1,7 +1,7 @@
 # Retrieval Agents
 ## Overview
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 

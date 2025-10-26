@@ -80,9 +80,9 @@ print(f"Via map_interests with 'tourist attractions': {len(results2)} results")
 print(f"Keywords used: '{keyword}' vs '{mapped[0]}'")
 
 if len(results) != len(results2):
-    print(f"\n⚠ DIFFERENCE FOUND: {abs(len(results) - len(results2))} result difference")
+    print(f"\nWARNING: DIFFERENCE FOUND: {abs(len(results) - len(results2))} result difference")
 else:
-    print(f"\n✓ Same number of results")
+    print(f"\nSame number of results")
 
 print("\n" + "=" * 80)
 print("TEST 3: Full research_places() flow")
