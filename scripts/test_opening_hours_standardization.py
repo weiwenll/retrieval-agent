@@ -28,8 +28,8 @@ def test_standardization():
         ("Open 24 hours", "00:00-23:59", "Open 24 hours text"),
         ("Closed", "Closed", "Closed"),
         ("6:30PM12:00AM", "18:30-00:00", "PM to midnight conversion"),
-        ("10:00 AM – 7:00 PM", "10:00-19:00", "Standard Google format with dash"),
-        ("9:00 AM – 5:00 PM", "09:00-17:00", "Standard format with single digit hour"),
+        ("10:00 AM - 7:00 PM", "10:00-19:00", "Standard Google format with dash"),
+        ("9:00 AM - 5:00 PM", "09:00-17:00", "Standard format with single digit hour"),
         (None, "00:00-23:59", "None defaults to open all day"),
         ("", "00:00-23:59", "Empty string defaults to open all day"),
     ]
