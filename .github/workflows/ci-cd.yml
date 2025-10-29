@@ -246,6 +246,7 @@ jobs:
           context: .
           file: ./ResearchAgent/Dockerfile
           push: true
+          provenance: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-${{ steps.env.outputs.environment }}
@@ -259,6 +260,7 @@ jobs:
           context: .
           file: ./TransportAgent/Dockerfile
           push: true
+          provenance: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-${{ steps.env.outputs.environment }}
