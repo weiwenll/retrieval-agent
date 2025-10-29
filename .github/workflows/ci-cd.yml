@@ -295,6 +295,8 @@ jobs:
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
 
       - name: SAM Deploy to Dev
+        id: sam-deploy
+        continue-on-error: true
         run: |
           sam deploy \
             --stack-name retrieval-agent-dev \
@@ -310,6 +312,16 @@ jobs:
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
               ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY }}" \
               AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+
+      - name: Show Stack Errors if Deploy Failed
+        if: steps.sam-deploy.outcome == 'failure'
+        run: |
+          echo "## Deployment Failed - Stack Events" >> $GITHUB_STEP_SUMMARY
+          aws cloudformation describe-stack-events \
+            --stack-name retrieval-agent-dev \
+            --region ${{ env.AWS_REGION }} \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED'].[LogicalResourceId,ResourceStatusReason]" \
+            --output table >> $GITHUB_STEP_SUMMARY || true
 
       - name: Get Stack Outputs
         run: |
