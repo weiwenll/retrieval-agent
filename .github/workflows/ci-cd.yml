@@ -290,9 +290,6 @@ jobs:
       - name: Install AWS SAM CLI
         uses: aws-actions/setup-sam@v2
 
-      - name: SAM Build
-        run: sam build --use-container --parallel --cached
-
       - name: Get AWS Account ID
         id: account
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
