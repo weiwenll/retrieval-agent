@@ -224,6 +224,28 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Set ECR Repository Policy for Lambda
+        run: |
+          aws ecr set-repository-policy \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --policy-text '{
+              "Version": "2008-10-17",
+              "Statement": [
+                {
+                  "Sid": "LambdaECRImageRetrievalPolicy",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                  },
+                  "Action": [
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:BatchCheckLayerAvailability"
+                  ]
+                }
+              ]
+            }'
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
