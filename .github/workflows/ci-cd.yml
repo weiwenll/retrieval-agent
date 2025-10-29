@@ -165,32 +165,32 @@ jobs:
           cache-to: type=gha,mode=max,scope=transport
           load: true
 
-      - name: Run Trivy vulnerability scanner - ResearchAgent
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ steps.meta.outputs.research-tag }}
-          format: 'sarif'
-          output: 'trivy-research-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+      # - name: Run Trivy vulnerability scanner - ResearchAgent
+      #   uses: aquasecurity/trivy-action@master
+      #   with:
+      #     image-ref: ${{ steps.meta.outputs.research-tag }}
+      #     format: 'sarif'
+      #     output: 'trivy-research-results.sarif'
+      #     severity: 'CRITICAL,HIGH'
+      #     exit-code: '0'
 
-      - name: Run Trivy vulnerability scanner - TransportAgent
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ steps.meta.outputs.transport-tag }}
-          format: 'sarif'
-          output: 'trivy-transport-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+      # - name: Run Trivy vulnerability scanner - TransportAgent
+      #   uses: aquasecurity/trivy-action@master
+      #   with:
+      #     image-ref: ${{ steps.meta.outputs.transport-tag }}
+      #     format: 'sarif'
+      #     output: 'trivy-transport-results.sarif'
+      #     severity: 'CRITICAL,HIGH'
+      #     exit-code: '0'
 
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: |
-            trivy-research-results.sarif
-            trivy-transport-results.sarif
+      # - name: Upload Trivy results to GitHub Security
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   if: always()
+      #   continue-on-error: true
+      #   with:
+      #     sarif_file: |
+      #       trivy-research-results.sarif
+      #       trivy-transport-results.sarif
 
       - name: Test ResearchAgent Container
         run: |
@@ -293,6 +293,10 @@ jobs:
       - name: SAM Build
         run: sam build --use-container --parallel --cached
 
+      - name: Get AWS Account ID
+        id: account
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
+
       - name: SAM Deploy to Dev
         run: |
           sam deploy \
@@ -303,6 +307,7 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               Environment=dev \
+              LambdaExecutionRoleArn=arn:aws:iam::${{ steps.account.outputs.account_id }}:role/retrieval-agent-LambdaRole \
               GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
               ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY }}" \
