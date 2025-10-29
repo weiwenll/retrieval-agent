@@ -96,10 +96,6 @@ Resources:
             Path: /research
             Method: POST
             RestApiId: !Ref ApiGateway
-    Metadata:
-      DockerContext: .
-      Dockerfile: ResearchAgent/Dockerfile
-      DockerTag: latest
 
   # TransportAgent Lambda Function
   TransportAgentFunction:
@@ -127,10 +123,6 @@ Resources:
             Path: /transport
             Method: POST
             RestApiId: !Ref ApiGateway
-    Metadata:
-      DockerContext: .
-      Dockerfile: TransportAgent/Dockerfile
-      DockerTag: latest
 
   # API Gateway
   ApiGateway:
