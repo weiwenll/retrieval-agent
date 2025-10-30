@@ -8,7 +8,7 @@ x-common-environment: &common-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   S3_BUCKET: ${S3_BUCKET:-retrieval-agent-data-dev}
   MAX_PLACES_MULTIPLIER: ${MAX_PLACES_MULTIPLIER:-2}
-  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-southeast-1}
+  AWS_REGION: ${AWS_REGION:-ap-southeast-1}
   # Use IAM role or environment variables instead of mounting credentials
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -42,7 +42,7 @@ services:
       - DEBUG=${DEBUG:-0}
       - DATA_DIR=/tmp/localstack/data
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-southeast-1}
+      - AWS_REGION=${AWS_REGION:-ap-southeast-1}
     volumes:
       - "${TMPDIR:-/tmp}/localstack:/tmp/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
