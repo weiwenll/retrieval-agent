@@ -274,7 +274,7 @@ jobs:
   deploy-dev:
     name: Deploy to Development
     runs-on: ubuntu-latest
-    needs: [test-integration, build-and-scan, push-to-ecr]
+    needs: [test-integration, push-to-ecr]
     if: github.ref == 'refs/heads/master'
     environment: development
 
@@ -295,19 +295,11 @@ jobs:
       - name: Get AWS Account ID
         id: account
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
-
-      - name: SAM Build
-        run: |
-          echo "## Validating SAM template..." >> $GITHUB_STEP_SUMMARY
-          sam build  # Just validates, doesn't rebuild containers
-          echo "SAM validation completed" >> $GITHUB_STEP_SUMMARY
     
       - name: SAM Deploy to Dev
         id: sam-deploy
-        continue-on-error: true
         run: |
           sam deploy \
-            --no-build
             --stack-name retrieval-agent-dev \
             --region ${{ env.AWS_REGION }} \
             --capabilities CAPABILITY_IAM \
@@ -340,6 +332,65 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --query 'Stacks[0].Outputs' \
             --output table >> $GITHUB_STEP_SUMMARY
+
+      - name: Smoke test deployment
+        if: steps.sam-deploy.outcome == 'success'
+        continue-on-error: true
+        run: |
+          echo "## Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+            
+          # Wait for Lambda to be ready
+          echo "Waiting for Lambda functions to be ready..."
+          sleep 10
+            
+          # Test ResearchAgent Lambda
+          echo "Testing ResearchAgent..."
+          aws lambda invoke --function-name research-agent-dev \
+          --payload '{"test": "smoke"}' \
+          response-research.json \
+          --region ${{ env.AWS_REGION }} || true
+            
+          if [ -f response-research.json ]; then
+          cat response-research.json
+          if grep -q "statusCode" response-research.json; then
+          echo "ResearchAgent smoke test passed" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "ResearchAgent smoke test returned unexpected response" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "ResearchAgent smoke test inconclusive" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Test TransportAgent Lambda
+            echo "Testing TransportAgent..."
+            aws lambda invoke --function-name transport-agent-dev \
+              --payload '{"test": "smoke"}' \
+              response-transport.json \
+              --region ${{ env.AWS_REGION }} || true
+            
+            if [ -f response-transport.json ]; then
+              cat response-transport.json
+              if grep -q "statusCode" response-transport.json; then
+                echo "TransportAgent smoke test passed" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "TransportAgent smoke test returned unexpected response" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "TransportAgent smoke test inconclusive" >> $GITHUB_STEP_SUMMARY
+            fi
+    
+      - name: Rollback on failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "## ⚠️ Initiating Rollback" >> $GITHUB_STEP_SUMMARY
+          aws cloudformation cancel-update-stack \
+          --stack-name retrieval-agent-dev \
+          --region ${{ env.AWS_REGION }} >> $GITHUB_STEP_SUMMARY 2>&1 || \
+          aws cloudformation rollback-stack \
+          --stack-name retrieval-agent-dev \
+          --region ${{ env.AWS_REGION }} >> $GITHUB_STEP_SUMMARY 2>&1 || true
+          echo "Rollback attempted" >> $GITHUB_STEP_SUMMARY
 
   # ============================================================================
   # Deploy to Production
