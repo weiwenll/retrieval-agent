@@ -305,7 +305,7 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
-            --image-repository ${{ steps.account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}
+            --image-repository ${{ steps.account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }} \
             --parameter-overrides \
               Environment=dev \
               LambdaExecutionRoleArn=arn:aws:iam::${{ steps.account.outputs.account_id }}:role/retrieval-agent-LambdaRole \
