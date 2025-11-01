@@ -58,19 +58,25 @@ def load_input_file(file_path: str) -> dict:
     try:
         with open(file_path, 'r') as f:
             input_data = json.load(f)
-        
-        # Basic validation
-        required_fields = ["trip_dates", "duration_days", "budget", "pace"]
+
+        # Check if requirements section exists
+        if "requirements" not in input_data:
+            raise ValueError("Missing required section: requirements")
+
+        requirements = input_data["requirements"]
+
+        # Basic validation - check fields in requirements section
+        required_fields = ["trip_dates", "duration_days", "budget_total_sgd", "pace"]
         for field in required_fields:
-            if field not in input_data:
-                raise ValueError(f"Missing required field: {field}")
-        
-        # Check if optional section exists, and validate accommodation_location if it does
-        if "optional" in input_data and "accommodation_location" not in input_data["optional"]:
-            raise ValueError("Missing required field: optional.accommodation_location")
-        
+            if field not in requirements:
+                raise ValueError(f"Missing required field in requirements: {field}")
+
+        # Check if optional section exists in requirements
+        if "optional" in requirements and "accommodation_location" not in requirements["optional"]:
+            raise ValueError("Missing required field: requirements.optional.accommodation_location")
+
         return input_data
-    
+
     except FileNotFoundError:
         print(f"Error: Input file '{file_path}' not found.")
         return None
@@ -1649,19 +1655,20 @@ class PlacesClusteringAgent:
 
 # ## Simple Function Handler
 
-def research_places(input_file: str, output_file: str = None) -> dict:
+def research_places(input_file: str, output_file: str = None, session_id: str = None) -> dict:
     """
     Simple function handler to research and format Singapore places.
 
     Args:
         input_file: Path to input JSON file
         output_file: Optional path to save results (default: ResearchAgent/output.json)
+        session_id: Session identifier for retrieval_id generation
 
     Returns:
         Dictionary with formatted places
 
     Example:
-        results = research_places('inputs/simple_input.json')
+        results = research_places('inputs/simple_input.json', session_id='f312ea72')
     """
     import time
     from datetime import datetime
@@ -1675,12 +1682,13 @@ def research_places(input_file: str, output_file: str = None) -> dict:
     agent = PlacesResearchAgent()
     start_time = time.time()
 
-    # Extract parameters
-    pace = input_data.get('pace', 'moderate')
-    duration_days = input_data.get('duration_days', 1)
-    location = input_data.get('optional', {}).get('accommodation_location', {})
-    user_interests = input_data.get('optional', {}).get('interests', [])
-    dietary_restrictions = input_data.get('optional', {}).get('dietary_restrictions', [])
+    # Extract parameters from requirements section
+    requirements_data = input_data.get('requirements', {})
+    pace = requirements_data.get('pace', 'moderate')
+    duration_days = requirements_data.get('duration_days', 1)
+    location = requirements_data.get('optional', {}).get('accommodation_location', {})
+    user_interests = requirements_data.get('optional', {}).get('interests', [])
+    dietary_restrictions = requirements_data.get('optional', {}).get('dietary_restrictions', [])
     if isinstance(dietary_restrictions, str):
         dietary_restrictions = [dietary_restrictions]
 
@@ -1779,28 +1787,21 @@ def research_places(input_file: str, output_file: str = None) -> dict:
 
     elapsed = time.time() - start_time
 
-    # Generate retrieval ID with timestamp
-    retrieval_id = datetime.now().strftime("ret_%Y_%m_%d_%H%M%S")
+    # Generate retrieval ID with session_id and timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    retrieval_id = f"ret_{session_id}_{timestamp}" if session_id else f"ret_{timestamp}"
 
-    result = {
-        "requirements": {
-            "destination_city": input_data.get("destination_city", "Singapore"),
-            "trip_dates": input_data.get("trip_dates", {}),
-            "duration_days": input_data.get("duration_days"),
-            "budget": input_data.get("budget"),
-            "pace": input_data.get("pace"),
-            "optional": input_data.get("optional", {})
-        },
-        "retrieval": {
-            "retrieval_id": retrieval_id,
-            "time_elapsed": round(elapsed, 2),
-            "places_found": len(formatted_places),
-            "attractions_count": len(attraction_results),
-            "food_count": len(food_results),
-            "conditions": requirements,
-            "places_matrix": {
-                "nodes": formatted_places
-            }
+    # Copy input data wholesale, then append retrieval section
+    result = input_data.copy()
+    result["retrieval"] = {
+        "retrieval_id": retrieval_id,
+        "time_elapsed": round(elapsed, 2),
+        "places_found": len(formatted_places),
+        "attractions_count": len(attraction_results),
+        "food_count": len(food_results),
+        "conditions": requirements,
+        "places_matrix": {
+            "nodes": formatted_places
         }
     }
 
