@@ -47,6 +47,11 @@ Parameters:
     Default: ""
     Description: Anthropic API Key (optional)
 
+  ImageTag:
+    Type: String
+    Default: "latest"
+    Description: Docker image tag to deploy (e.g. research-${github.sha})
+
 Resources:
   # S3 Bucket for logs and audit data (General Purpose)
   DataBucket:
@@ -80,7 +85,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'research-agent-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-latest'
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-${ImageTag}'
       Role: !Ref LambdaExecutionRoleArn
       ImageConfig:
         Command:
@@ -107,7 +112,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'transport-agent-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:transport-latest'
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:transport-${ImageTag}'
       Role: !Ref LambdaExecutionRoleArn
       ImageConfig:
         Command:
