@@ -48,6 +48,8 @@ def lambda_handler(event, context):
         API Gateway response with status and result
     """
     try:
+        print(f"Raw event received: {json.dumps(event, default=str)}")
+
         # Parse request body if it's a string (API Gateway)
         if isinstance(event.get('body'), str):
             body = json.loads(event['body'])
@@ -57,6 +59,8 @@ def lambda_handler(event, context):
         # Extract parameters
         json_filename = body.get('json_filename')
         session_id = body.get('session_id')
+
+        print(f"Received parameters - json_filename: {json_filename}, session_id: {session_id}")
 
         # Validate required parameters
         if not json_filename:
@@ -79,6 +83,8 @@ def lambda_handler(event, context):
         input_s3_key = f"{INPUT_PREFIX}{json_filename}"
         output_s3_key = f"{OUTPUT_PREFIX}{session_id}-output.json"
 
+        print(f"Attempting to access bucket: {INPUT_BUCKET}, key: {input_s3_key}")
+        print(f"Output will be written to bucket: {INPUT_BUCKET}, key: {output_s3_key}")
         logger.info(f"Processing request - Session: {session_id}, Input: s3://{INPUT_BUCKET}/{input_s3_key}, Output: s3://{INPUT_BUCKET}/{output_s3_key}")
 
         # Create temporary files for processing
