@@ -265,14 +265,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=transport
 
   # ============================================================================
-  # Deploy to Development
+  # Deploy to Production
   # ============================================================================
-  deploy-dev:
-    name: Deploy to Development
+  deploy-prod:
+    name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [test-integration, push-to-ecr]
     if: github.ref == 'refs/heads/master'
-    environment: development
+    environment: production
 
     steps:
       - name: Checkout code
@@ -304,6 +304,7 @@ jobs:
             --image-repository ${{ steps.account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }} \
             --parameter-overrides \
               Environment=prod \
+              ImageTag=${{ github.sha }} \
               LambdaExecutionRoleArn=arn:aws:iam::${{ steps.account.outputs.account_id }}:role/retrieval-agent-LambdaRole \
               GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
@@ -341,7 +342,7 @@ jobs:
             
           # Test ResearchAgent Lambda
           echo "Testing ResearchAgent..."
-          aws lambda invoke --function-name research-agent-dev \
+          aws lambda invoke --function-name research-agent-prod \
           --payload '{"test": "smoke"}' \
           response-research.json \
           --region ${{ env.AWS_REGION }} || true
@@ -359,7 +360,7 @@ jobs:
             
             # Test TransportAgent Lambda
             echo "Testing TransportAgent..."
-            aws lambda invoke --function-name transport-agent-dev \
+            aws lambda invoke --function-name transport-agent-prod \
               --payload '{"test": "smoke"}' \
               response-transport.json \
               --region ${{ env.AWS_REGION }} || true
@@ -381,60 +382,9 @@ jobs:
         run: |
           echo "##Initiating Rollback" >> $GITHUB_STEP_SUMMARY
           aws cloudformation cancel-update-stack \
-          --stack-name retrieval-agent-dev \
+          --stack-name retrieval-agent-stack \
           --region ${{ env.AWS_REGION }} >> $GITHUB_STEP_SUMMARY 2>&1 || \
           aws cloudformation rollback-stack \
-          --stack-name retrieval-agent-dev \
+          --stack-name retrieval-agent-stack \
           --region ${{ env.AWS_REGION }} >> $GITHUB_STEP_SUMMARY 2>&1 || true
           echo "Rollback attempted" >> $GITHUB_STEP_SUMMARY
-
-  # ============================================================================
-  # Deploy to Production
-  # ============================================================================
-  # deploy-prod:
-  #   name: Deploy to Production
-  #   runs-on: ubuntu-latest
-  #   needs: [test-integration, build-and-scan]
-  #   if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-  #   environment: production
-
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-
-  #     - name: Configure AWS credentials
-  #       uses: aws-actions/configure-aws-credentials@v4
-  #       with:
-  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
-  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
-  #         aws-region: ${{ env.AWS_REGION }}
-
-  #     - name: Install AWS SAM CLI
-  #       uses: aws-actions/setup-sam@v2
-
-  #     - name: SAM Build
-  #       run: sam build --use-container --parallel --cached
-
-  #     - name: SAM Deploy to Production
-  #       run: |
-  #         sam deploy \
-  #           --stack-name retrieval-agent-stack \
-  #           --region ${{ env.AWS_REGION }} \
-  #           --capabilities CAPABILITY_IAM \
-  #           --no-confirm-changeset \
-  #           --no-fail-on-empty-changeset \
-  #           --parameter-overrides \
-  #             Environment=prod \
-  #             GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY_PROD }} \
-  #             OpenAIApiKey=${{ secrets.OPENAI_API_KEY_PROD }} \
-  #             ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY_PROD }}" \
-  #             AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY_PROD }}"
-
-  #     - name: Get Stack Outputs
-  #       run: |
-  #         echo "## Production Deployment Outputs" >> $GITHUB_STEP_SUMMARY
-  #         aws cloudformation describe-stacks \
-  #           --stack-name retrieval-agent-stack \
-  #           --region ${{ env.AWS_REGION }} \
-  #           --query 'Stacks[0].Outputs' \
-  #           --output table >> $GITHUB_STEP_SUMMARY
