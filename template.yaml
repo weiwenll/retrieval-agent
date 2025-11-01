@@ -49,8 +49,7 @@ Parameters:
 
   ImageTag:
     Type: String
-    Default: "latest"
-    Description: Docker image tag to deploy (e.g. research-${github.sha})
+    Description: Docker image tag to deploy (must be git commit SHA, e.g. abc1234)
 
 Resources:
   # S3 Bucket for logs and audit data (General Purpose)
