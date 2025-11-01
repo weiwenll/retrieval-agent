@@ -48,11 +48,15 @@ Parameters:
     Description: Anthropic API Key (optional)
 
 Resources:
-  # S3 Bucket for input/output data
+  # S3 Bucket for logs and audit data (General Purpose)
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'retrieval-agent-data-${Environment}-${AWS::AccountId}'
+      BucketName: !Sub 'retrieval-agent-data-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:
@@ -60,9 +64,9 @@ Resources:
           - Id: DeleteOldVersions
             Status: Enabled
             NoncurrentVersionExpirationInDays: 30
-          - Id: DeleteOldOutputs
+          - Id: DeleteOldLogs
             Status: Enabled
-            Prefix: outputs/
+            Prefix: logs/
             ExpirationInDays: 90
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
