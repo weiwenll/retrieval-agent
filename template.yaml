@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Retrieval Agent - Research and Transport microservices
+Description: Retrieval Agent - Research and Transport Serverless API
 
 Globals:
   Function:
