@@ -56,11 +56,11 @@ def lambda_handler(event, context):
         else:
             body = event.get('body', event)
 
-        # Extract parameters
-        json_filename = body.get('json_filename')
-        session_id = body.get('session_id')
+        # Extract parameters (strip whitespace)
+        json_filename = body.get('json_filename', '').strip()
+        session_id = body.get('session_id', '').strip()
 
-        print(f"Received parameters - json_filename: {json_filename}, session_id: {session_id}")
+        print(f"Received parameters - json_filename: '{json_filename}', session_id: '{session_id}'")
 
         # Validate required parameters
         if not json_filename:
@@ -99,9 +99,9 @@ def lambda_handler(event, context):
             logger.info(f"Downloading input from S3: s3://{INPUT_BUCKET}/{input_s3_key}")
             s3_client.download_file(INPUT_BUCKET, input_s3_key, input_tmp_path)
 
-            # Run the research agent
+            # Run the research agent with session_id
             logger.info("Running ResearchAgent...")
-            result = research_places(input_tmp_path, output_tmp_path)
+            result = research_places(input_tmp_path, output_tmp_path, session_id=session_id)
 
             # Check if research was successful
             if 'error' in result:
