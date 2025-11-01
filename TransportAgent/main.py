@@ -30,7 +30,7 @@ except ImportError:
 handlers = [logging.StreamHandler()]
 
 # Add file handler only when running locally (not in Lambda)
-if not os.getenv('transport-agent-prod'):
+if not os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
     handlers.append(logging.FileHandler('agent_reasoning.log', mode='a'))
 
 logging.basicConfig(
