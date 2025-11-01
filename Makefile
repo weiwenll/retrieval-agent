@@ -47,7 +47,8 @@ sam-deploy: sam-build
 		--region $(AWS_REGION) \
 		--parameter-overrides "Environment=$(ENVIRONMENT)" \
 		--no-confirm-changeset \
-		--no-fail-on-empty-changeset
+		--no-fail-on-empty-changeset \
+		--force-upload
 
 sam-local:
 	sam local start-api \
