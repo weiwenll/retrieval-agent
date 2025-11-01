@@ -27,13 +27,16 @@ except ImportError:
     Anthropic = None
     
 # Configure logging
+handlers = [logging.StreamHandler()]
+
+# Add file handler only when running locally (not in Lambda)
+if not os.getenv('transport-agent-prod'):
+    handlers.append(logging.FileHandler('agent_reasoning.log', mode='a'))
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('agent_reasoning.log', mode='a')
-    ]
+    handlers=handlers
 )
 logger = logging.getLogger(__name__)
 
