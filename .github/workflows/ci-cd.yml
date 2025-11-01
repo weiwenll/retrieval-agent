@@ -296,7 +296,7 @@ jobs:
         id: sam-deploy
         run: |
           sam deploy \
-            --stack-name retrieval-agent-prod \
+            --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
@@ -315,7 +315,7 @@ jobs:
         run: |
           echo "## Deployment Failed - Stack Events" >> $GITHUB_STEP_SUMMARY
           aws cloudformation describe-stack-events \
-            --stack-name retrieval-agent-prod \
+            --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
             --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED'].[LogicalResourceId,ResourceStatusReason]" \
             --output table >> $GITHUB_STEP_SUMMARY || true
@@ -324,7 +324,7 @@ jobs:
         run: |
           echo "## Deployment Outputs" >> $GITHUB_STEP_SUMMARY
           aws cloudformation describe-stacks \
-            --stack-name retrieval-agent-prod \
+            --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
             --query 'Stacks[0].Outputs' \
             --output table >> $GITHUB_STEP_SUMMARY
@@ -418,7 +418,7 @@ jobs:
   #     - name: SAM Deploy to Production
   #       run: |
   #         sam deploy \
-  #           --stack-name retrieval-agent-prod \
+  #           --stack-name retrieval-agent-stack \
   #           --region ${{ env.AWS_REGION }} \
   #           --capabilities CAPABILITY_IAM \
   #           --no-confirm-changeset \
@@ -434,7 +434,7 @@ jobs:
   #       run: |
   #         echo "## Production Deployment Outputs" >> $GITHUB_STEP_SUMMARY
   #         aws cloudformation describe-stacks \
-  #           --stack-name retrieval-agent-prod \
+  #           --stack-name retrieval-agent-stack \
   #           --region ${{ env.AWS_REGION }} \
   #           --query 'Stacks[0].Outputs' \
   #           --output table >> $GITHUB_STEP_SUMMARY
