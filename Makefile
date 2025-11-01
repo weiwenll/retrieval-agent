@@ -9,8 +9,11 @@ help:
 	@echo "Available commands:"
 	@echo "  make local-start    - Start local environment with docker-compose"
 	@echo "  make local-test     - Test local Lambda endpoints"
+	@echo "  make docker-build   - Build Docker images"
+	@echo "  make docker-push    - Push Docker images to ECR with git commit tag"
 	@echo "  make sam-build      - Build SAM application"
-	@echo "  make sam-deploy     - Deploy to AWS"
+	@echo "  make sam-deploy     - Deploy SAM stack to AWS"
+	@echo "  make deploy         - Complete workflow: build, push, and deploy (uses current git commit)"
 	@echo "  make sam-local      - Start SAM local API"
 	@echo "  make clean          - Clean all artifacts"
 
@@ -42,10 +45,11 @@ sam-build: sam-validate
 		--parameter-overrides "Environment=$(ENVIRONMENT)"
 
 sam-deploy: sam-build
+	@echo "Deploying with git commit: $(VERSION)"
 	sam deploy \
-		--stack-name retrieval-agent-$(ENVIRONMENT) \
+		--stack-name retrieval-agent-stack \
 		--region $(AWS_REGION) \
-		--parameter-overrides "Environment=$(ENVIRONMENT)" \
+		--parameter-overrides "Environment=$(ENVIRONMENT) ImageTag=$(VERSION)" \
 		--no-confirm-changeset \
 		--no-fail-on-empty-changeset \
 		--force-upload
@@ -58,20 +62,27 @@ sam-local:
 
 sam-logs:
 	sam logs \
-		--stack-name retrieval-agent-$(ENVIRONMENT) \
+		--stack-name retrieval-agent-stack \
 		--tail
 
 # Docker Build & Push (for ECR)
 docker-build:
+	@echo "Building Docker images..."
 	docker-compose build
 
 docker-push: docker-build
-	@$(eval ECR_REPO := $(shell aws ecr describe-repositories --repository-names retrieval-agent --query 'repositories[0].repositoryUri' --output text))
+	@echo "Pushing images to ECR with tag: $(VERSION)"
+	@$(eval ECR_REPO := $(shell aws ecr describe-repositories --repository-names retrieval-agent --query 'repositories[0].repositoryUri' --output text --region $(AWS_REGION)))
 	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REPO)
-	@docker tag research-agent:latest $(ECR_REPO):research-$(VERSION)
-	@docker tag transport-agent:latest $(ECR_REPO):transport-$(VERSION)
-	@docker push $(ECR_REPO):research-$(VERSION)
-	@docker push $(ECR_REPO):transport-$(VERSION)
+	docker tag research-agent:latest $(ECR_REPO):research-$(VERSION)
+	docker tag transport-agent:latest $(ECR_REPO):transport-$(VERSION)
+	docker push $(ECR_REPO):research-$(VERSION)
+	docker push $(ECR_REPO):transport-$(VERSION)
+	@echo "Successfully pushed research-$(VERSION) and transport-$(VERSION)"
+
+# Complete deployment workflow
+deploy: docker-push sam-deploy
+	@echo "Deployment complete! Deployed git commit: $(VERSION)"
 
 # Testing
 test-integration:
