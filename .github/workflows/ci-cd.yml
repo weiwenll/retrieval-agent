@@ -249,8 +249,6 @@ jobs:
           provenance: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-${{ steps.env.outputs.environment }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:research-latest
           cache-from: type=gha,scope=research
           cache-to: type=gha,mode=max,scope=research
 
@@ -263,8 +261,6 @@ jobs:
           provenance: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-${{ steps.env.outputs.environment }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transport-latest
           cache-from: type=gha,scope=transport
           cache-to: type=gha,mode=max,scope=transport
 
