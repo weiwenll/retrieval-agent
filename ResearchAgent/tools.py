@@ -415,6 +415,104 @@ def geocode_location(location_name: str, country: str = "Singapore") -> Optional
         return None
 
 
+def analyze_interests_with_llm(interests: List[str], openai_client) -> List[Dict]:
+    """
+    Use LLM to analyze interests and classify them as location-based or category-based.
+
+    Location-based: "exploring near Changi Airport", "around Marina Bay"
+    Category-based: "museums", "gardens", "adventure activities"
+
+    Args:
+        interests: List of interest strings from user input
+        openai_client: OpenAI client for LLM calls
+
+    Returns:
+        List of dicts with structure:
+        {
+            "original": "exploring near Changi Airport",
+            "type": "location",  # or "category"
+            "location_query": "Changi Airport Singapore",  # if type is "location"
+            "categories": []  # if type is "category", list of generic categories
+        }
+    """
+    if not interests or not openai_client:
+        return []
+
+    print(f"\nAnalyzing {len(interests)} interest(s) with LLM...")
+
+    # Create prompt for LLM
+    prompt = f"""Analyze the following user interests and classify each as either "location" or "category".
+
+Location-based interests mention specific places or areas (e.g., "exploring near Changi Airport", "around Marina Bay", "in Chinatown").
+Category-based interests mention types of activities or places without specific locations (e.g., "museums", "gardens", "adventure", "food courts").
+
+For location-based interests, extract the location name for searching.
+For category-based interests, identify generic attraction categories.
+
+User interests:
+{chr(10).join(f'{i+1}. {interest}' for i, interest in enumerate(interests))}
+
+Respond in JSON format as an array of objects:
+[
+    {{
+        "original": "the exact original interest text",
+        "type": "location" or "category",
+        "location_query": "location name" (only if type is location),
+        "categories": ["category1", "category2"] (only if type is category, use generic terms like "museum", "garden", "shopping")
+    }}
+]
+
+Important:
+- For location interests, extract ONLY the location name (e.g., "Changi Airport", "Marina Bay")
+- For category interests, use generic attraction types
+- Be precise with the "type" field
+"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a travel planning assistant that analyzes user interests."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"}
+        )
+
+        result_text = response.choices[0].message.content
+        import json
+        parsed = json.loads(result_text)
+
+        # Handle both array and object with array responses
+        if isinstance(parsed, dict) and 'interests' in parsed:
+            analyzed = parsed['interests']
+        elif isinstance(parsed, dict) and 'results' in parsed:
+            analyzed = parsed['results']
+        elif isinstance(parsed, list):
+            analyzed = parsed
+        else:
+            analyzed = [parsed]
+
+        # Log analysis results
+        for item in analyzed:
+            original = item.get('original', '')
+            interest_type = item.get('type', 'unknown')
+            if interest_type == 'location':
+                location_query = item.get('location_query', '')
+                print(f"  '{original}' -> LOCATION: {location_query}")
+            else:
+                categories = item.get('categories', [])
+                print(f"  '{original}' -> CATEGORY: {', '.join(categories)}")
+
+        return analyzed
+
+    except Exception as e:
+        logger.exception(f"Error analyzing interests with LLM: {e}")
+        print(f"[ERROR] Failed to analyze interests: {e}")
+        # Fallback: treat all as category-based
+        return [{"original": interest, "type": "category", "categories": []} for interest in interests]
+
+
 def get_place_details(place_ids, field=None, details_per_second=5.0, max_retries=3, language='en', max_workers=5):
     """
     Fetch detailed information for places using Google Places API v1 with concurrent processing.
