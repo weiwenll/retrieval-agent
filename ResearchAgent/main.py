@@ -98,13 +98,17 @@ except FileNotFoundError:
 
 # ## Places Research Agent - Reasoning Implementation
 # - Handles pure reasoning and analytical thinking
-# - Executes API calls through tools (search_places, search_multiple_keywords, get_place_details)
+# - Executes API calls through tools (search_places, get_place_details)
 # - Returns raw data objects from API calls without any formatting
 # - Has the calculate_required_places method
 
-from tools import search_places, search_multiple_keywords, get_place_details, search_wikipedia, fetch_place_enrichments, remove_unicode, generate_tags, standardize_opening_hours
+from tools import (
+    search_places, get_place_details, remove_unicode, standardize_opening_hours, generate_tags,
+    get_exclusions_for_uninterest, convert_dietary_to_exclusions, generate_place_description,
+    geocode_location
+)
+from config import INTEREST_MAPPINGS, SPECIAL_INTEREST_CATEGORIES
 from tool_clustering import calculate_geo_cluster
-from config import COMMON_INTEREST_MAPPINGS, DIETARY_KEYWORDS
 import time
 
 class PlacesResearchAgent:
@@ -144,7 +148,6 @@ class PlacesResearchAgent:
         # Known actions mapping
         self.known_actions = {
             "search_places": search_places,
-            "search_multiple_keywords": search_multiple_keywords,
             "get_place_details": get_place_details
         }
 
@@ -196,13 +199,12 @@ class PlacesResearchAgent:
             - "local cuisine" → "local food"
             
             Your available actions are:
-            1. search_places when there is only ONE interest/keyword to search for.
-            2. search_multiple_keywords when there are MULTIPLE interests/keywords to search for.
-            3. get_place_details to get comprehensive details about all places.
-            
+            1. search_places - search for places by type(s). Can handle single or multiple types with exclusions.
+            2. get_place_details - get comprehensive details about all places.
+
             The 'interests' input from user maps to:
-            - 'keyword' parameter for search_places (single string)
-            - 'keywords' parameter for search_multiple_keywords (array of strings)
+            - 'included_types' parameter for search_places (single string or array of strings)
+            - 'excluded_types' parameter for search_places (string or array of types to exclude)
 
             Finds attractions near accomodation location and find at least one food places per day.
             
@@ -217,13 +219,13 @@ class PlacesResearchAgent:
             """.strip()
 
     def _define_places_tools(self) -> List[Dict]:
-        """Define Google Places API tools."""
+        """Define Google Places API v1 tools."""
         return [
             {
                 "type": "function",
                 "function": {
                     "name": "search_places",
-                    "description": "Search for places with a SINGLE keyword/interest based on user interests and accommodation location",
+                    "description": "Search for places using Google Places API v1. Supports single or multiple place types with exclusions.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -232,24 +234,34 @@ class PlacesResearchAgent:
                                 "properties": {
                                     "lat": {"type": "number", "description": "Latitude of accommodation"},
                                     "lng": {"type": "number", "description": "Longitude of accommodation"},
-                                    # "neighborhood": {"type": "string", "description": "Neighborhood name (optional)"}
+                                    "neighborhood": {"type": "string", "description": "Neighborhood name (optional, future: can geocode to lat/lng)"}
                                 },
                                 "required": ["lat", "lng"],
                                 "description": "Accommodation location with coordinates"
                             },
-                            "keyword": {
-                                "type": "string",
-                                "description": "A single user interest like 'tourist_attraction'"
+                            "included_types": {
+                                "description": "Single type (string) or multiple types (array) to search for",
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "array", "items": {"type": "string"}}
+                                ]
+                            },
+                            "excluded_types": {
+                                "description": "Array of place types to exclude (optional)",
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "array", "items": {"type": "string"}}
+                                ]
                             },
                             "radius": {
                                 "type": "integer",
-                                "description": "Search radius in meters (default: 5000, increase by 2000 if not enough results)",
-                                "default": 5000
+                                "description": "Search radius in meters (default: 10000, max: 35000)",
+                                "default": 10000
                             },
-                            "max_pages": {
+                            "max_results": {
                                 "type": "integer",
-                                "description": "Maximum number of pages to retrieve (default: 3), Each page has up to 20 results.",
-                                "default": 1
+                                "description": "Maximum results to retrieve (default: 20, max: 20 per request)",
+                                "default": 20
                             },
                             "min_rating": {
                                 "type": "number",
@@ -257,50 +269,7 @@ class PlacesResearchAgent:
                                 "default": 4.0
                             }
                         },
-                        "required": ["location", "keyword"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_multiple_keywords",
-                    "description": "Search for places with MULTIPLE keywords/interests based on user interests and accommodation location",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": {"type": "number", "description": "Latitude of accommodation"},
-                                    "lng": {"type": "number", "description": "Longitude of accommodation"},
-                                    # "neighborhood": {"type": "string", "description": "Neighborhood name (optional)"}
-                                },
-                                "required": ["lat", "lng"],
-                                "description": "Accommodation location with coordinates"
-                            },
-                            "keywords": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Array of user interests"
-                            },
-                            "radius": {
-                                "type": "integer",
-                                "description": "Search radius in meters (default: 5000, increases if not enough results)",
-                                "default": 5000
-                            },
-                            "max_pages": {
-                                "type": "integer",
-                                "description": "Maximum number of pages to retrieve (default: 1), Each page has up to 20 results.",
-                                "default": 1
-                            },
-                            "min_rating": {
-                                "type": "number",
-                                "description": "Minimum rating filter (1.0-5.0)",
-                                "default": 4.0
-                            }
-                        },
-                        "required": ["location", "keywords"]
+                        "required": ["location", "included_types"]
                     }
                 }
             },
@@ -462,130 +431,108 @@ class PlacesResearchAgent:
 
     def map_interests(self, user_interests: List[str]) -> List[str]:
         """
-        Map user interests to Google Places categories using hybrid approach.
-        First checks dictionary, then uses LLM for unmapped interests.
+        Map user interests to Google Places types using INTEREST_MAPPINGS.
         """
-        mapped = []
-        unmapped = []
+        all_place_types = []
 
         for interest in user_interests:
             interest_lower = interest.lower().strip()
 
-            # Check if it's a dietary keyword
-            if interest_lower in DIETARY_KEYWORDS:
-                mapped.append(f"{interest_lower} food")
+            # Check direct mapping
+            if interest_lower in INTEREST_MAPPINGS:
+                place_types = INTEREST_MAPPINGS[interest_lower].copy()
+                all_place_types.extend(place_types)
                 continue
 
-            # Check dictionary mapping
-            if interest_lower in COMMON_INTEREST_MAPPINGS:
-                category = COMMON_INTEREST_MAPPINGS[interest_lower]
-                # Skip food categories for attractions
-                if category not in ["food", "restaurant"]:
-                    mapped.append(category)
-            else:
-                unmapped.append(interest)
+            # Check special categories
+            if interest_lower in SPECIAL_INTEREST_CATEGORIES:
+                place_types = SPECIAL_INTEREST_CATEGORIES[interest_lower]["include"].copy()
+                all_place_types.extend(place_types)
+                continue
 
-        # Use LLM for unmapped interests (batch call)
-        if unmapped:
-            logger.info(f"Using LLM to map {len(unmapped)} interests: {unmapped}")
-            llm_mapped = self._map_interests_with_llm(unmapped)
-            mapped.extend(llm_mapped)
+            # Check for partial matches
+            found = False
+            for key, value in INTEREST_MAPPINGS.items():
+                if key in interest_lower or interest_lower in key:
+                    place_types = value.copy() if isinstance(value, list) else [value]
+                    all_place_types.extend(place_types)
+                    found = True
+                    break
+
+            if not found:
+                logger.warning(f"No mapping found for interest: '{interest}'")
+
+        # Deduplicate while preserving order
+        seen = set()
+        mapped = []
+        for place_type in all_place_types:
+            if place_type not in seen:
+                seen.add(place_type)
+                mapped.append(place_type)
 
         # Default to tourist_attraction if nothing mapped
         if not mapped:
             mapped.append("tourist_attraction")
+            logger.info("No interests mapped, defaulting to 'tourist_attraction'")
 
         logger.info(f"Mapped interests: {mapped}")
         return mapped
 
-    def _map_interests_with_llm(self, unmapped_interests: List[str]) -> List[str]:
-        """Use LLM to map unmapped interests to categories."""
-        prompt = f"""Map these interests to Google Places categories. Return only valid categories.
-
-Valid categories: tourist_attraction, museum, park, food, cafe, bar, bakery, shopping_mall, lodging
-
-Interests to map: {', '.join(unmapped_interests)}
-
-Return JSON array of categories (e.g., ["museum", "park"])"""
-
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.1,
-                messages=[
-                    {"role": "system", "content": "You map user interests to Google Places API categories. Return only a JSON array."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-
-            content = response.choices[0].message.content.strip()
-            # Extract JSON array from response
-            import re
-            json_match = re.search(r'\[.*\]', content, re.DOTALL)
-            if json_match:
-                categories = json.loads(json_match.group())
-                return [c for c in categories if c not in ["food", "restaurant"]]
-            return ["tourist_attraction"]
-
-        except Exception as e:
-            logger.error(f"LLM mapping failed: {e}")
-            return ["tourist_attraction"]
-
     def create_food_search_terms(self, food_interests: List[str], dietary_restrictions: List[str], days: int) -> List[str]:
         """
-        Generate food search terms based on food interests and dietary restrictions.
-        Prioritizes specific food types (restaurant, cafe) if mentioned in interests.
+        Generate Google Places API food types based on food interests.
+        Returns actual place types (not search strings).
+
+        Note: DIETARY_EXCLUSIONS are handled separately in food_excluded_types,
+        so this function only returns types to INCLUDE.
+
+        Args:
+            food_interests: User's food-related interests
+            dietary_restrictions: User's dietary restrictions (used for logging only)
+            days: Trip duration (unused, kept for compatibility)
+
+        Returns:
+            List of Google Places API food type strings
         """
-        base_searches = []
+        food_types = []
 
         # Check if user has specific food type interests
         has_restaurant = any('restaurant' in str(i).lower() for i in food_interests)
         has_cafe = any('cafe' in str(i).lower() or 'coffee' in str(i).lower() for i in food_interests)
         has_hawker = any('hawker' in str(i).lower() or 'food court' in str(i).lower() for i in food_interests)
+        has_bakery = any('bakery' in str(i).lower() or 'pastry' in str(i).lower() for i in food_interests)
 
-        # Build search terms based on interests
+        # Build Google Places API food types based on interests
         if has_restaurant:
             # Prioritize restaurants
-            if dietary_restrictions:
-                for restriction in dietary_restrictions:
-                    base_searches.extend([
-                        f"{restriction} restaurant Singapore",
-                        f"Singapore {restriction} dining"
-                    ])
-            else:
-                base_searches.extend([
-                    "restaurant Singapore",
-                    "fine dining Singapore",
-                    "local restaurant Singapore"
-                ])
-        elif has_cafe:
-            # Prioritize cafes
-            base_searches.extend([
-                "cafe Singapore",
-                "coffee shop Singapore",
-                "breakfast cafe Singapore"
-            ])
-        elif has_hawker:
-            # Prioritize hawker centers
-            base_searches.extend([
-                "hawker centre Singapore",
-                "food court Singapore",
-                "local hawker Singapore"
-            ])
-        else:
-            # Mixed approach - variety of food places
-            if dietary_restrictions:
-                for restriction in dietary_restrictions[:2]:  # Limit to 2 restrictions
-                    base_searches.append(f"{restriction} food Singapore")
-            else:
-                base_searches.extend([
-                    "restaurant Singapore",
-                    "cafe Singapore",
-                    "hawker centre Singapore"
-                ])
+            food_types.extend(["restaurant", "fine_dining_restaurant"])
 
-        # Limit searches to avoid over-fetching
-        return base_searches[:3]
+        if has_cafe:
+            # Add cafes
+            food_types.extend(["cafe", "coffee_shop"])
+
+        if has_hawker:
+            # Add hawker/food courts
+            food_types.extend(["food_court"])
+
+        if has_bakery:
+            # Add bakeries
+            food_types.extend(["bakery", "dessert_shop"])
+
+        # If no specific interests, use general food types
+        if not food_types:
+            food_types = ["restaurant", "cafe", "food_court"]
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_types = []
+        for ftype in food_types:
+            if ftype not in seen:
+                seen.add(ftype)
+                unique_types.append(ftype)
+
+        # Return up to 3 types (Google Places API limit for includedTypes is 5, but we batch with others)
+        return unique_types[:3]
 
     def check_timeout(self, start_time: float, timeout_seconds: int = 780) -> bool:
         """Check if execution is approaching timeout (13 minutes = 780 seconds)."""
@@ -595,80 +542,82 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
             return True
         return False
 
-    def search_with_requirements(self, location, keyword, min_rating, max_results_needed, search_type='attraction'):
+    def search_with_requirements(self, location, included_types, min_rating, max_results_needed, search_type='attraction', excluded_types=None):
         """
-        Helper to search with progressive radius, pages, and rating relaxation.
+        Progressive search: Expand radius FIRST, then relax rating ONLY if needed
 
-        Strategy progressively expands search area AND relaxes rating requirements:
-        - Attractions: Start at 4.0 rating, can go down to 3.0 or accept anything
-        - Food: Start at 4.5 rating, only go down to 3.8 (maintain food quality)
+        Strategy progressively:
+        1. Widens search radius (5km → 7.5km → 10km → ... → 50km)
+        2. Relaxes rating requirements (start high, gradually lower by ~0.1-0.2 per level)
+
+        The entire rating curve shifts based on the passed min_rating:
+        - Default attractions: starts at 4.0, relaxes down to 2.5 (never below 3.0)
+        - Default food: starts at 4.5, relaxes down to 3.5 (stricter quality control)
+        - Custom (e.g., shopping malls at 3.5): shifts entire curve down by 0.5
 
         Args:
             location: Location dict with lat/lng
-            keyword: Search keyword
-            min_rating: Initial minimum rating (can be overridden by strategy)
+            included_types: Place type(s) to search for (string or list)
+            min_rating: Starting minimum rating
             max_results_needed: Target number of results
-            search_type: 'attraction' or 'food' (determines rating relaxation strategy)
+            search_type: 'attraction' or 'food' (determines rating floor)
+            excluded_types: Place types to exclude (optional)
 
         Returns:
             List of places (up to max_results_needed)
         """
-        # Progressive search strategies
-        attraction_strategies = [
-            {'radius': 5000,  'pages': 1, 'min_rating': 4.0},  # Start strict
-            {'radius': 7500,  'pages': 2, 'min_rating': 3.9},  # Small relaxation
-            {'radius': 10000, 'pages': 2, 'min_rating': 3.8},  # Gradual decline
-            {'radius': 12500, 'pages': 2, 'min_rating': 3.7},  # Mid-point
-            {'radius': 15000, 'pages': 3, 'min_rating': 3.5},  # Accept decent places
-            {'radius': 17500, 'pages': 3, 'min_rating': 3.3},  # Getting desperate
-            {'radius': 20000, 'pages': 3, 'min_rating': 3.0},  # Most of SG
-            {'radius': 25000, 'pages': 3, 'min_rating': 2.5},  # Nearly all SG
-            {'radius': 30000, 'pages': 3, 'min_rating': 2.5},  # Entire island
-            {'radius': 35000, 'pages': 3, 'min_rating': 2.5},  # Include offshore islands
-        ]
+        # Progressive search strategy: For each rating level, sweep through all radii
+        # Example: 10km@4.0, 20km@4.0, ..., 35km@4.0, then 10km@3.9, 20km@3.9, ..., 35km@3.9, ...
 
-        food_strategies = [
-            {'radius': 5000,  'pages': 1, 'min_rating': 4.5},  # Start very strict
-            {'radius': 7500,  'pages': 2, 'min_rating': 4.4},  # Slight relaxation
-            {'radius': 10000, 'pages': 2, 'min_rating': 4.3},  # Still high quality
-            {'radius': 12500, 'pages': 2, 'min_rating': 4.2},  # Very good food
-            {'radius': 15000, 'pages': 3, 'min_rating': 4.1},  # Above 4.0
-            {'radius': 17500, 'pages': 3, 'min_rating': 4.0},  # Good threshold
-            {'radius': 20000, 'pages': 3, 'min_rating': 3.9},  # Most of SG
-            {'radius': 25000, 'pages': 3, 'min_rating': 3.8},  # Nearly all SG
-            {'radius': 30000, 'pages': 3, 'min_rating': 3.7},  # Entire island
-            {'radius': 35000, 'pages': 3, 'min_rating': 3.5},  # Absolute minimum
-        ]
+        strategies = []
+        max_radius = 35000  # Google Places API maximum
+        radius_step = 10000  # Expand by 10km each time (reduced API calls)
 
-        # Select strategy based on search type
-        strategies = food_strategies if search_type == 'food' else attraction_strategies
+        # Food: stricter floor (3.5), Attractions: more relaxed floor (3.0)
+        rating_floor = 3.5 if search_type == 'food' else 3.0
+        rating_decrement = 0.1
+
+        # For each rating level (starting at min_rating, decreasing by 0.1 until floor)
+        current_rating = min_rating
+        while current_rating >= rating_floor:
+            # Sweep through all radii at this rating level (10km, 20km, ..., 50km)
+            for radius in range(radius_step, max_radius + 1, radius_step):
+                strategies.append({
+                    'radius': radius,
+                    'max_results': 20,
+                    'min_rating': round(current_rating, 1)
+                })
+            current_rating -= rating_decrement
+
+        logger.info(f"Generated {len(strategies)} search strategies (ratings: {min_rating} down to {rating_floor}, radii: {radius_step/1000}km to {max_radius/1000}km per rating)")
 
         all_results = []
 
         for level, strategy in enumerate(strategies, 1):
             if len(all_results) >= max_results_needed:
-                print(f"Target reached: {len(all_results)}/{max_results_needed} for '{keyword}'")
+                print(f"Target reached: {len(all_results)}/{max_results_needed} for '{included_types}'")
                 break
 
             radius = strategy['radius']
-            max_pages = strategy['pages']
+            max_results = strategy['max_results']
             current_min_rating = strategy['min_rating']
 
             still_needed = max_results_needed - len(all_results)
-            logger.info(f"[Level {level}/{len(strategies)}] Searching '{keyword}' at radius={radius}m, pages={max_pages}, rating>={current_min_rating} (need {still_needed} more)")
-            print(f"  [{level}/{len(strategies)}] {keyword}: {radius/1000}km, {max_pages}pg, rating>={current_min_rating:.1f}...")
+            logger.info(f"[Level {level}/{len(strategies)}] Searching '{included_types}' at radius={radius}m, max_results={max_results}, rating>={current_min_rating} (need {still_needed} more)")
+            print(f"  [{level}/{len(strategies)}] {included_types}: {radius/1000}km, max={max_results}, rating>={current_min_rating:.1f}...")
 
             results = search_places(
                 location=location,
-                keyword=keyword,
+                included_types=included_types,
+                excluded_types=excluded_types,
                 radius=radius,
-                max_pages=max_pages,
+                max_results=max_results,
                 min_rating=current_min_rating
             )
 
-            # Deduplicate by place_id
-            existing_ids = {p.get('place_id') for p in all_results}
-            new_results = [p for p in results if p.get('place_id') not in existing_ids]
+            # Deduplicate by place_id (API v1 uses 'id' field)
+            existing_ids = {p.get('id') or p.get('place_id') for p in all_results}
+            new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
 
             all_results.extend(new_results)
             logger.info(f"Found {len(new_results)} new results at level {level} (total: {len(all_results)})")
@@ -676,7 +625,7 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
 
             # If we got enough, stop expanding
             if len(all_results) >= max_results_needed:
-                print(f"Target reached for '{keyword}'")
+                print(f"Target reached for '{included_types}'")
                 break
 
             # If no new results at current level, continue to next level
@@ -687,7 +636,7 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
         # Return up to max_results_needed
         final_count = min(len(all_results), max_results_needed)
         if final_count < max_results_needed:
-            print(f"WARNING: Only found {final_count}/{max_results_needed} for '{keyword}' (type: {search_type})")
+            print(f"WARNING: Only found {final_count}/{max_results_needed} for '{included_types}' (type: {search_type})")
 
         return all_results[:max_results_needed]
 
@@ -695,108 +644,115 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
 
     def format_results(self, raw_places: List[Dict], enrichments: Dict = None) -> List[Dict]:
         """
-        Format raw places from search into structured schema.
-        This is the only formatting method - takes raw results and formats them.
+        Format raw places from Google Places API v1 into structured schema.
 
         Args:
-            raw_places: List of raw place data from search API
-            enrichments: Optional dict with 'details' and 'wikipedia' data
-            from fetch_place_enrichments()
+            raw_places: List of raw place data from search API (API v1 format)
+            enrichments: Optional dict with 'details' data from get_place_details()
 
         Returns:
             List of formatted place dictionaries
         """
         if not enrichments:
-            enrichments = {'details': {}, 'wikipedia': {}}
+            enrichments = {'details': {}}
 
         details_by_id = enrichments.get('details', {})
-        wikipedia_by_name = enrichments.get('wikipedia', {})
 
         formatted_places = []
         for place in raw_places:
-            place_id = place.get('place_id')
-            place_name = place.get('name')
+            # Extract place_id from API v1 format (id field: "places/{id}")
+            place_id = place.get('id', '')
 
-            # Get enrichment data for this place
-            details_data = details_by_id.get(place_id)
-            wikipedia_summary = wikipedia_by_name.get(place_name)
+            # Ensure place_id has "places/" prefix for lookup
+            place_id_with_prefix = place_id if place_id.startswith('places/') else f"places/{place_id}"
+
+            # Get enrichment data for this place (details dict uses full "places/{id}" format)
+            details_data = details_by_id.get(place_id_with_prefix)
 
             # Format the place with enriched data
-            formatted_place = self._format_single_place(place, details_data, wikipedia_summary)
+            formatted_place = self._format_single_place(place, details_data)
             formatted_places.append(formatted_place)
 
         return formatted_places
 
-    def _format_single_place(self, place_data: Dict, details_data: Dict = None, wikipedia_summary: str = None) -> Dict:
+    def _format_single_place(self, place_data: Dict, details_data: Dict = None) -> Dict:
         """
-        Format single place from raw API data to structured schema.
+        Format single place from raw Google Places API v1 data to structured schema.
 
         Args:
-            place_data: Raw place data from search API
-            details_data: Optional detailed data from get_place_details
-            wikipedia_summary: Optional Wikipedia summary
+            place_data: Raw place data from search API (API v1 format)
+            details_data: Optional detailed data from get_place_details (API v1 format)
         """
         # Merge details if available
         if details_data:
             place_data = {**place_data, **details_data}
 
-        # Extract geo coordinates
-        geo = self._extract_geo(place_data)
+        # Extract place_id (API v1: id field, format: "places/{place_id}")
+        place_id = place_data.get('id', '')
+        if place_id.startswith('places/'):
+            place_id = place_id.replace('places/', '')
 
-        # Calculate geo cluster ID
+        # Extract name (API v1: displayName.text)
+        display_name = place_data.get('displayName', {})
+        name = display_name.get('text', 'Unknown Place') if isinstance(display_name, dict) else display_name
+
+        # Extract address (API v1: formattedAddress)
+        address = place_data.get('formattedAddress')
+
+        # Extract geo coordinates (API v1: location.latitude/longitude)
+        geo = self._extract_geo(place_data)
         geo_cluster_id = None
         if geo and geo.get('latitude') and geo.get('longitude'):
             geo_cluster_id = calculate_geo_cluster(geo['latitude'], geo['longitude'])
 
-        # Extract opening hours if available
-        # NOTE: If no opening hours are provided by the API, we default to "00:00-23:59" (open all day)
-        # This ensures that places without explicit hours are still usable in the itinerary
-        opening_hours = {
-            "monday": None,
-            "tuesday": None,
-            "wednesday": None,
-            "thursday": None,
-            "friday": None,
-            "saturday": None,
-            "sunday": None
-        }
-        if place_data.get('opening_hours'):
-            opening_hours = self._parse_opening_hours(place_data['opening_hours'])
-        else:
-            # Default to open all day if no hours provided
-            default_hours = "00:00-23:59"
-            opening_hours = {
-                "monday": default_hours,
-                "tuesday": default_hours,
-                "wednesday": default_hours,
-                "thursday": default_hours,
-                "friday": default_hours,
-                "saturday": default_hours,
-                "sunday": default_hours
-            }
-
-        # Extract reviews count (user_ratings_total)
-        reviews_count = place_data.get('user_ratings_total')
-
-        # Extract accessibility options
-        accessibility_options = []
-        if place_data.get('wheelchair_accessible_entrance'):
-            accessibility_options.append("wheelchair_accessible_entrance")
-
-        # Get raw text fields
-        name = place_data.get('name', 'Unknown Place')
-        address = place_data.get('formatted_address') or place_data.get('vicinity')
+        # Extract types and primaryType (API v1: types[], primaryType)
         all_types = place_data.get('types', [])
+        primary_type_v1 = place_data.get('primaryType')
+        if primary_type_v1 and primary_type_v1 not in all_types:
+            all_types.insert(0, primary_type_v1)
         place_type = self._map_to_standard_type(all_types)
-        description = wikipedia_summary or f"A {place_type} in Singapore"
 
-        # Generate enhanced tags using tools function
+        # Extract rating and review count (API v1: rating, userRatingCount)
+        rating = place_data.get('rating')
+        reviews_count = place_data.get('userRatingCount')
+
+        # Extract priceLevel (API v1: enum string -> int)
+        price_level = self._map_price_level_from_v1(place_data.get('priceLevel'))
+
+        # Extract opening hours (API v1: regularOpeningHours.weekdayDescriptions)
+        opening_hours = self._extract_opening_hours_v1(place_data)
+
+        # Extract accessibility (API v1: accessibilityOptions.wheelchairAccessibleEntrance)
+        accessibility_options = self._extract_accessibility_v1(place_data)
+
+        # Extract description (API v1: editorialSummary.text)
+        editorial = place_data.get('editorialSummary', {})
+        editorial_text = editorial.get('text') if isinstance(editorial, dict) else editorial
+
+        # If no editorialSummary from API, generate description using LLM
+        if not editorial_text and self.client:
+            description_data = {
+                'name': name,
+                'address': address or 'Singapore',
+                'latitude': geo.get('latitude', 0) if geo else 0,
+                'longitude': geo.get('longitude', 0) if geo else 0,
+                'neighborhood': address.split(',')[-2].strip() if address and ',' in address else 'Singapore',
+                'type': place_type
+            }
+            description = generate_place_description(description_data, openai_client=self.client)
+        else:
+            description = editorial_text or f"A {place_type} in Singapore"
+
+        # Extract website (API v1: websiteUri)
+        website = place_data.get('websiteUri')
+
+        # Generate enhanced tags
         tags = generate_tags(
             place_type=place_type,
             all_types=all_types,
             accessibility_options=accessibility_options,
-            price_level=place_data.get('price_level'),
-            rating=place_data.get('rating'),
+            price_level=price_level,
+            rating=rating,
             description=description,
             name=name,
             reviews_count=reviews_count,
@@ -804,10 +760,11 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
         )
 
         return {
-            "place_id": place_data.get('place_id'),
+            "place_id": place_id,
             "name": remove_unicode(name),
             "type": place_type,
-            "cost_sgd": self._map_price_level_to_cost(place_data.get('price_level')),
+            "cost_sgd": self._map_price_level_to_cost(price_level),
+            "price_level": price_level,
             "onsite_co2_kg": None,
             "geo": geo,
             "geo_cluster_id": geo_cluster_id,
@@ -829,12 +786,88 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
         }
 
     def _extract_geo(self, place_data: Dict) -> Optional[Dict]:
-        """Extract geo coordinates from place data."""
+        """
+        Extract geo coordinates from place data.
+        Supports both API v1 (location.latitude/longitude) and legacy format (geometry.location.lat/lng).
+        """
+        # Try API v1 format first (location.latitude/longitude)
+        location = place_data.get('location')
+        if location and isinstance(location, dict):
+            lat = location.get('latitude')
+            lng = location.get('longitude')
+            if lat is not None and lng is not None:
+                return {"latitude": lat, "longitude": lng}
+
+        # Fallback to legacy format (geometry.location.lat/lng)
         geometry = place_data.get('geometry')
-        if not geometry:
+        if geometry:
+            location = geometry.get('location', {})
+            lat = location.get('lat')
+            lng = location.get('lng')
+            if lat is not None and lng is not None:
+                return {"latitude": lat, "longitude": lng}
+
+        return None
+
+    def _map_price_level_from_v1(self, price_level_str: Optional[str]) -> Optional[int]:
+        """
+        Map Google Places API v1 priceLevel enum to integer (0-4).
+
+        API v1 enum:
+        - PRICE_LEVEL_FREE -> 0
+        - PRICE_LEVEL_INEXPENSIVE -> 1
+        - PRICE_LEVEL_MODERATE -> 2
+        - PRICE_LEVEL_EXPENSIVE -> 3
+        - PRICE_LEVEL_VERY_EXPENSIVE -> 4
+        """
+        if not price_level_str:
             return None
-        location = geometry.get('location', {})
-        return {"latitude": location.get('lat'), "longitude": location.get('lng')}
+
+        price_level_map = {
+            'PRICE_LEVEL_FREE': 0,
+            'PRICE_LEVEL_INEXPENSIVE': 1,
+            'PRICE_LEVEL_MODERATE': 2,
+            'PRICE_LEVEL_EXPENSIVE': 3,
+            'PRICE_LEVEL_VERY_EXPENSIVE': 4
+        }
+        return price_level_map.get(price_level_str)
+
+    def _extract_opening_hours_v1(self, place_data: Dict) -> Dict:
+        """
+        Extract and parse opening hours from API v1 format.
+        API v1: regularOpeningHours.weekdayDescriptions
+        """
+        default_hours = "00:00-23:59"
+        opening_hours = {
+            "monday": default_hours,
+            "tuesday": default_hours,
+            "wednesday": default_hours,
+            "thursday": default_hours,
+            "friday": default_hours,
+            "saturday": default_hours,
+            "sunday": default_hours
+        }
+
+        regular_hours = place_data.get('regularOpeningHours', {})
+        weekday_descriptions = regular_hours.get('weekdayDescriptions', [])
+
+        if weekday_descriptions:
+            opening_hours = self._parse_opening_hours({'weekday_text': weekday_descriptions})
+
+        return opening_hours
+
+    def _extract_accessibility_v1(self, place_data: Dict) -> List[str]:
+        """
+        Extract accessibility options from API v1 format.
+        API v1: accessibilityOptions.wheelchairAccessibleEntrance
+        """
+        accessibility_options = []
+        accessibility = place_data.get('accessibilityOptions', {})
+
+        if accessibility.get('wheelchairAccessibleEntrance'):
+            accessibility_options.append("wheelchair_accessible_entrance")
+
+        return accessibility_options
 
     def _map_to_standard_type(self, google_types) -> str:
         """
@@ -990,48 +1023,19 @@ Return JSON array of categories (e.g., ["museum", "park"])"""
 # - Transforms it into specified schema format required by the planning agent
 # - Sets null values for unavailable data
 
-from tools import search_wikipedia
-
 class PlacesResearchFormattingAgent:
     """
-    Specialized agent for formatting raw Google Places API data into structured output.
-    Handles data from both search_places/search_multiple_keywords and get_place_details.
-    Includes Wikipedia integration.
+    Specialized agent for formatting raw Google Places API v1 data into structured output.
+    Handles data from search_places/search_multiple_keywords and get_place_details.
+    Uses editorialSummary from API v1 instead of Wikipedia.
     """
-    
+
     def __init__(self, use_llm_for_all: bool = False):
         # Initialize OpenAI client for complex formatting
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model_name = "gpt-4o"
         self.temperature = 0.1  # Lower temperature for consistent formatting
         self.use_llm_for_all = use_llm_for_all  # Option to use LLM for entire transformation
-        
-        # Known actions mapping
-        self.known_actions = {
-            "search_wikipedia": search_wikipedia
-        }
-        
-    def _define_tools(self) -> List[Dict]:
-        """Define available tools for the agent."""
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_wikipedia",
-                    "description": "Search Wikipedia for information about a place.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "search_term": {
-                                "type": "string",
-                                "description": "The name of the place to search for."
-                            }
-                        },
-                        "required": ["search_term"]
-                    }
-                }
-            }
-        ]
 
     def format_response(self, reasoning_data: Dict) -> Dict:
         """
@@ -1103,13 +1107,11 @@ class PlacesResearchFormattingAgent:
         elif details_results:
             for place_id, details in details_results.items():
                 formatted_place = self._format_single_place({}, details)
-                formatted_place['place_id'] = place_id
+                # Ensure place_id is set
+                if not formatted_place.get('place_id'):
+                    formatted_place['place_id'] = place_id
                 formatted_places.append(formatted_place)
-        
-        # Generate descriptions and tags using Wikipedia
-        if formatted_places:
-            formatted_places = self._generate_wikipedia_descriptions(formatted_places)
-        
+
         return formatted_places
     
     def _format_single_place(self, search_data: Dict, details_data: Dict) -> Dict:
@@ -1155,6 +1157,7 @@ class PlacesResearchFormattingAgent:
             "name": name,
             "type": primary_type,
             "cost_sgd": cost_sgd,
+            "price_level": price_level,
             "onsite_co2_kg": None,  # Ignored
             "geo": geo,
             "geo_cluster_id": geo_cluster_id,
@@ -1265,24 +1268,42 @@ class PlacesResearchFormattingAgent:
         # Prepare data for LLM
         places_with_wiki = []
         for place in batch:
+            wiki_data = wikipedia_results.get(place["name"])
+
+            # Log Wikipedia data source
+            if wiki_data:
+                logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Wikipedia data found (length: {len(wiki_data)} chars)")
+                # Log first 100 chars of Wikipedia data to help identify mismatches
+                logger.info(f"  Wikipedia preview: {wiki_data[:100]}...")
+            else:
+                logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - No Wikipedia data, will use fallback")
+
             place_data = {
                 "name": place["name"],
                 "type": place["type"],
                 "address": place.get("address"),
                 "rating": place.get("rating"),
-                "wikipedia_info": wikipedia_results.get(place["name"])
+                "wikipedia_info": wiki_data
             }
             places_with_wiki.append(place_data)
-        
-        prompt = f"""You are a Singapore tourism expert. Create compelling descriptions and tags for these places based on their Wikipedia information.
 
-Places with Wikipedia data:
+        prompt = f"""You are a Singapore tourism expert. Create compelling descriptions and tags for these places.
+
+IMPORTANT CONTEXT:
+- All places are located in SINGAPORE
+- Use the place name, address, type, and rating to create accurate descriptions
+- If Wikipedia info is provided, ONLY use it if it clearly relates to the Singapore location
+- If Wikipedia seems to describe a different place/country, IGNORE it and use the basic info instead
+
+Places data:
 {json.dumps(places_with_wiki, indent=2)}
 
-For each place:
-1. If Wikipedia info is available, use it to create an accurate, engaging 1-2 sentence description
-2. If no Wikipedia info, create a simple description based on the name and type
-3. Generate 3-5 relevant tags for travelers
+For each place, create:
+1. Description: 1-2 sentence compelling tourist description
+- If Wikipedia is relevant and matches the Singapore location, use it
+- If no Wikipedia OR Wikipedia describes wrong location, generate based on: name + type + address + Singapore context
+- Example: "Popular waterfront attraction in Marina Bay area" or "Historic temple in Chinatown district"
+2. Tags: 3-5 relevant tags for travelers based on the place type and characteristics
 
 Return a JSON array (no markdown formatting) with the same order, each object containing:
 - description: 1-2 sentence compelling tourist description
@@ -1295,35 +1316,46 @@ Example format:
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=[
-                {"role": "system", "content": "You are a Singapore tourism expert. Create descriptions and tags based on Wikipedia information."},
+                {"role": "system", "content": "You are a Singapore tourism expert. Create accurate descriptions for Singapore places using provided context (name, address, type). Use Wikipedia data only if it clearly matches the Singapore location. If Wikipedia describes a different country/place, ignore it and generate description from basic place info."},
                 {"role": "user", "content": prompt}
             ],
             temperature=self.temperature
         )
-        
+
         llm_output = response.choices[0].message.content.strip()
-        
+
         # Handle markdown-wrapped JSON
         llm_output = self._extract_json_from_markdown(llm_output)
-        
+
         logger.info(f"LLM response (first 100 chars): {llm_output[:100]}...")
-        
+
         llm_data = json.loads(llm_output)
-        
+
         # Merge LLM data back into places
         for i, place in enumerate(batch):
             if i < len(llm_data):
                 llm_place = llm_data[i]
-                place["description"] = llm_place.get("description", "A place to visit in Singapore")
-                place["tags"] = llm_place.get("tags", [place["type"]])
+                description = llm_place.get("description", "A place to visit in Singapore")
+                tags = llm_place.get("tags", [place["type"]])
+
+                # Log the final description source
+                wiki_data = wikipedia_results.get(place["name"])
+                if wiki_data:
+                    logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Description generated by LLM from Wikipedia")
+                else:
+                    logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Description generated by LLM (no Wikipedia data)")
+
+                place["description"] = description
+                place["tags"] = tags
             else:
+                logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Fallback description (generic)")
                 place["description"] = f"A {place['type']} in Singapore"
                 place["tags"] = [place["type"]]
-            
+
             # Clean up temp fields
             place.pop("_raw_types", None)
             place.pop("_raw_opening_hours", None)
-        
+
         return batch
     
     def _extract_json_from_markdown(self, text: str) -> str:
@@ -1655,6 +1687,46 @@ class PlacesClusteringAgent:
 
 # ## Simple Function Handler
 
+def fetch_place_enrichments(places: List[Dict], fetch_details: bool = True) -> Dict:
+    """
+    Fetch place details for a list of places.
+    Description generation happens later in format_results using editorialSummary or generate_place_description.
+
+    Args:
+        places: List of place dictionaries with 'id' keys (format: "places/{place_id}")
+        fetch_details: Whether to fetch Google Place details (default: True)
+
+    Returns:
+        Dict with 'details' key containing place details
+        {
+            'details': {place_id: details_dict, ...}
+        }
+    """
+    result = {'details': {}}
+
+    if not places or not fetch_details:
+        return result
+
+    print(f"Fetching details for {len(places)} places...")
+
+    # Extract place IDs (API v1 format: "places/{place_id}")
+    place_ids = []
+    for p in places:
+        place_id = p.get('id', '')
+        if place_id:
+            # Ensure place_id has "places/" prefix (required by API v1)
+            if not place_id.startswith('places/'):
+                place_id = f"places/{place_id}"
+            place_ids.append(place_id)
+
+    if place_ids:
+        # Fetch details (internally rate-limited to 5/sec)
+        result['details'] = get_place_details(place_ids)
+        print(f"Fetched details for {len(result['details'])} places")
+
+    return result
+
+
 def research_places(input_file: str, output_file: str = None, session_id: str = None) -> dict:
     """
     Simple function handler to research and format Singapore places.
@@ -1688,9 +1760,33 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     duration_days = requirements_data.get('duration_days', 1)
     location = requirements_data.get('optional', {}).get('accommodation_location', {})
     user_interests = requirements_data.get('optional', {}).get('interests', [])
+    user_uninterests = requirements_data.get('optional', {}).get('uninterests', [])
     dietary_restrictions = requirements_data.get('optional', {}).get('dietary_restrictions', [])
     if isinstance(dietary_restrictions, str):
         dietary_restrictions = [dietary_restrictions]
+    if isinstance(user_uninterests, str):
+        user_uninterests = [user_uninterests]
+
+    # Check if lat/lng are available, if not, geocode the neighbourhood
+    if location and ('lat' not in location or location.get('lat') is None):
+        neighbourhood = location.get('neighbourhood') or location.get('neighborhood')
+        if neighbourhood:
+            print(f"\n=== Geocoding neighbourhood '{neighbourhood}' (lat/lng not provided) ===")
+            geocoded = geocode_location(neighbourhood, country="Singapore")
+            if geocoded:
+                location['lat'] = geocoded['lat']
+                location['lng'] = geocoded['lng']
+                print(f"[OK] Using geocoded coordinates: ({location['lat']:.4f}, {location['lng']:.4f})\n")
+            else:
+                print(f"[ERROR] Failed to geocode '{neighbourhood}'. Please provide lat/lng manually.")
+                return {"error": f"Could not geocode neighbourhood '{neighbourhood}'"}
+        else:
+            print("[ERROR] No lat/lng or neighbourhood provided in accommodation_location.")
+            return {"error": "accommodation_location must have either lat/lng or neighbourhood"}
+
+    # Handle both 'lon' and 'lng' formats
+    if location and 'lon' in location and 'lng' not in location:
+        location['lng'] = location['lon']
 
     # Calculate requirements
     requirements = agent.calculate_required_places(pace, duration_days)
@@ -1698,52 +1794,94 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
 
     # Map interests
     mapped_interests = agent.map_interests(user_interests) if user_interests else ['tourist_attraction']
-    print(f"Mapped interests: {mapped_interests}")
 
-    # Search attractions
-    print(f"\n=== Searching for Attractions ===")
+    # Convert uninterests and dietary restrictions to exclusions FIRST
+    excluded_types_from_uninterests = []
+    if user_uninterests:
+        for uninterest in user_uninterests:
+            excluded_types_from_uninterests.extend(get_exclusions_for_uninterest(uninterest))
+        excluded_types_from_uninterests = list(set(excluded_types_from_uninterests))
+
+    # Core attraction types - priority order
+    core_types_priority = [
+        'tourist_attraction', 'amusement_park', 'museum', 'zoo', 'aquarium', 'park', 'art_gallery'
+    ]
+
+    core_types_secondary = [
+        'point_of_interest', 'church', 'hindu_temple', 'mosque', 'synagogue'
+    ]
+
+    # User's interests ALWAYS come first (highest priority)
+    # Then add core types to ensure at least 5 types total
+    for core_type in core_types_priority:
+        if core_type not in mapped_interests and core_type not in excluded_types_from_uninterests:
+            mapped_interests.append(core_type)
+
+    # Add secondary core types
+    for core_type in core_types_secondary:
+        if core_type not in mapped_interests and core_type not in excluded_types_from_uninterests:
+            mapped_interests.append(core_type)
+
+    print(f"Mapped interests (user first, then core): {mapped_interests[:7]}... (total: {len(mapped_interests)} types)")
+
+    excluded_types_from_dietary = convert_dietary_to_exclusions(dietary_restrictions) if dietary_restrictions else []
+
+    # Combine all exclusions (for attractions search)
+    attraction_excluded_types = list(set(excluded_types_from_uninterests))
+
+    # Combine all exclusions (for food search)
+    food_excluded_types = list(set(excluded_types_from_uninterests + excluded_types_from_dietary))
+
+    print(f"Excluded types (attractions): {attraction_excluded_types}")
+    print(f"Excluded types (food): {food_excluded_types}")
+
+    # Search attractions using batch search (array of types)
+    print(f"\n=== Searching for Attractions (batch search) ===")
     attraction_results = []
-    for interest in mapped_interests:
-        if agent.check_timeout(start_time):
-            break
-        if len(attraction_results) >= requirements['attractions_needed']:
-            print(f"Reached target: {len(attraction_results)}/{requirements['attractions_needed']} attractions")
-            break
 
-        min_rating = 3.5 if interest == 'shopping_mall' else 4.0
-        results = agent.search_with_requirements(
-            location, interest, min_rating,
-            requirements['attractions_needed'] - len(attraction_results),
-            search_type='attraction'
-        )
-        attraction_results.extend(results)
-        print(f"  Total attractions so far: {len(attraction_results)}/{requirements['attractions_needed']}\n")
+    # Google Places API searchNearby: maximum 5 types in includedTypes
+    batch_size = min(5, len(mapped_interests))
+    search_types = mapped_interests[:batch_size]
 
-    # Fallback mechanism: if still not enough results, try broader keywords
+    print(f"Searching for types (max 5): {search_types}")
+
+    # Use default min_rating 4.0 for attractions (3.5 if all are shopping malls)
+    has_shopping_mall = 'shopping_mall' in search_types
+    min_rating = 3.5 if has_shopping_mall and len(search_types) == 1 else 4.0
+
+    # Search with array of types - API will return mixed results
+    results = agent.search_with_requirements(
+        location, search_types, min_rating,
+        requirements['attractions_needed'],
+        search_type='attraction',
+        excluded_types=attraction_excluded_types
+    )
+    attraction_results.extend(results)
+    print(f"Found {len(attraction_results)}/{requirements['attractions_needed']} attractions from batch search\n")
+
+    # Fallback mechanism: if still not enough results, try broader search
     if len(attraction_results) < requirements['attractions_needed']:
-        fallback_keywords = ['attraction', 'establishment']
-        print(f"\n=== Insufficient results ({len(attraction_results)}/{requirements['attractions_needed']}). Trying fallback keywords ===")
+        print(f"\n=== Insufficient results ({len(attraction_results)}/{requirements['attractions_needed']}). Trying fallback search ===")
 
-        for fallback_keyword in fallback_keywords:
-            if agent.check_timeout(start_time):
-                break
-            if len(attraction_results) >= requirements['attractions_needed']:
-                print(f"Reached target with fallback: {len(attraction_results)}/{requirements['attractions_needed']} attractions")
-                break
+        if not agent.check_timeout(start_time):
+            # Try broader types that weren't in the initial batch
+            remaining_types = mapped_interests[batch_size:batch_size+5]  # Next 5 types
 
-            print(f"Trying fallback keyword: '{fallback_keyword}'")
-            results = agent.search_with_requirements(
-                location, fallback_keyword, 4.0,
-                requirements['attractions_needed'] - len(attraction_results),
-                search_type='attraction'
-            )
+            if remaining_types:
+                print(f"Trying additional types: {remaining_types}")
+                results = agent.search_with_requirements(
+                    location, remaining_types, 4.0,
+                    requirements['attractions_needed'] - len(attraction_results),
+                    search_type='attraction',
+                    excluded_types=attraction_excluded_types
+                )
 
-            # Deduplicate with existing results
-            existing_ids = {p.get('place_id') for p in attraction_results}
-            new_results = [p for p in results if p.get('place_id') not in existing_ids]
+                # Deduplicate with existing results
+                existing_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
+                new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
 
-            attraction_results.extend(new_results)
-            print(f"  Added {len(new_results)} new places with '{fallback_keyword}' (total: {len(attraction_results)}/{requirements['attractions_needed']})\n")
+                attraction_results.extend(new_results)
+                print(f"Added {len(new_results)} new places (total: {len(attraction_results)}/{requirements['attractions_needed']})\n")
 
     # Search food - extract food-related interests from user interests
     food_interests = [i for i in user_interests if any(
@@ -1768,18 +1906,19 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
         results = agent.search_with_requirements(
             location, food_term, min_food_rating,
             requirements['food_places_needed'] - len(food_results),
-            search_type='food'
+            search_type='food',
+            excluded_types=food_excluded_types
         )
         food_results.extend(results)
-        print(f"  Total food places so far: {len(food_results)}/{requirements['food_places_needed']}\n")
+        print(f"Total food places so far: {len(food_results)}/{requirements['food_places_needed']}\n")
 
     # Combine all places
     all_places = attraction_results + food_results
     print(f"\n=== Total places collected: {len(all_places)} ===")
 
-    # Fetch enrichments (details + Wikipedia) concurrently
-    print(f"\n=== Fetching enrichments for all places ===")
-    enrichments = fetch_place_enrichments(all_places, fetch_details=True, fetch_wikipedia=True)
+    # Fetch place details from Google Places API
+    print(f"\n=== Fetching place details ===")
+    enrichments = fetch_place_enrichments(all_places, fetch_details=True)
 
     # Format places with enriched data
     print(f"\n=== Formatting {len(all_places)} places ===")

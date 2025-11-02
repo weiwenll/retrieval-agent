@@ -8,6 +8,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import logging
 
+# Import mappings from config
+from config import UNINTEREST_MAPPINGS, SPECIAL_INTEREST_CATEGORIES, DIETARY_EXCLUSIONS
+
 
 def remove_unicode(text: str) -> str:
     """
@@ -210,21 +213,29 @@ def standardize_opening_hours(hours_str: str) -> str:
     # Join periods with comma
     return ','.join(standardized_periods)
 
-def search_places(location, radius=2000, keyword=None, language='en', max_results=20, min_rating=0.0):
+def search_places(location, radius=2000, included_types=None, excluded_types=None, language='en', max_results=20, min_rating=0.0):
     """
     Search Google Places nearby using the new Places API (v1).
     Returns RAW API data without formatting.
 
     Args:
         location: (lat, lng) tuple or dict with 'lat'/'lng' keys
-        radius: search radius in meters (default 2000m, max 50000m)
-        keyword: optional search keyword (maps to includedTypes)
+        radius: search radius in meters (default 2000m, max 35000m)
+        included_types: Single type (str) or multiple types (list) to search for
+        excluded_types: List of place types to exclude (optional)
         language: language code (default 'en')
         max_results: maximum results to fetch (default 20)
         min_rating: minimum rating filter (0.0-5.0)
 
     Returns:
         List of raw place dictionaries from Google Places API
+
+    Examples:
+        # Single type
+        search_places(location, included_types="restaurant", excluded_types=["bar", "pub"])
+
+        # Multiple types
+        search_places(location, included_types=["restaurant", "cafe"], excluded_types=["bar"])
     """
     api_key = os.getenv('GOOGLE_MAPS_API_KEY')
     if not api_key:
@@ -240,8 +251,8 @@ def search_places(location, radius=2000, keyword=None, language='en', max_result
         raise ValueError("location must be (lat, lng) tuple or dict with 'lat'/'lng' keys")
 
     # Validate parameters
-    if radius <= 0 or radius > 50000:
-        raise ValueError("radius must be between 1 and 50000 meters")
+    if radius <= 0 or radius > 35000:
+        raise ValueError("radius must be between 1 and 35000 meters")
 
     url = "https://places.googleapis.com/v1/places:searchNearby"
 
@@ -265,10 +276,21 @@ def search_places(location, radius=2000, keyword=None, language='en', max_result
         "maxResultCount": min(max_results, 20)
     }
 
-    if keyword:
-        body["includedTypes"] = [keyword]
+    # Handle included_types - can be string or list
+    if included_types:
+        if isinstance(included_types, str):
+            body["includedTypes"] = [included_types]
+        else:
+            body["includedTypes"] = included_types
 
-    print(f"Searching nearby: radius={radius}m, keyword={keyword}")
+    # Handle excluded_types - always a list
+    if excluded_types:
+        body["excludedTypes"] = excluded_types if isinstance(excluded_types, list) else [excluded_types]
+
+    # Format for logging
+    included_str = included_types if isinstance(included_types, str) else included_types
+    excluded_str = f", excluded={excluded_types}" if excluded_types else ""
+    print(f"Searching nearby: radius={radius}m, included={included_str}{excluded_str}")
 
     try:
         response = requests.post(url, headers=headers, json=body, timeout=30)
@@ -295,59 +317,103 @@ def search_places(location, radius=2000, keyword=None, language='en', max_result
         print(f"Returning {len(filtered_results)} places after filtering")
         return filtered_results
 
+    except requests.exceptions.HTTPError as e:
+        # Print actual API error response
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', str(e))
+            print(f"[ERROR] API returned {response.status_code}: {error_msg}")
+            logger.error(f"Search nearby HTTP {response.status_code}: {error_msg}")
+        except:
+            print(f"[ERROR] Search nearby: {e}")
+            logger.error(f"Search nearby error: {e}")
+        return []
     except requests.exceptions.RequestException as e:
-        logger.error(f"Search nearby error: {e}")
+        logger.error(f"Search nearby request error: {e}")
+        print(f"[ERROR] Request failed: {e}")
         return []
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
+        print(f"[ERROR] Unexpected: {e}")
         return []
 
-def search_multiple_keywords(location, keywords, radius=2000, max_results=20, min_rating=4.0):
+def geocode_location(location_name: str, country: str = "Singapore") -> Optional[Dict]:
     """
-    Search for multiple keywords and return raw results with deduplication.
-    Uses Google Places API v1.
+    Geocode a location name (neighbourhood, address, or place name) to lat/lng coordinates
+    using Google Places API v1 Text Search.
 
     Args:
-        location: (lat, lng) tuple or dict with 'lat'/'lng' keys
-        keywords: list of keywords to search for
-        radius: search radius in meters
-        max_results: max results per keyword
-        min_rating: minimum rating filter
+        location_name: Name of the location (e.g., "Clarke Quay", "Marina Bay", "Orchard Road")
+        country: Country to search in (default: "Singapore")
 
     Returns:
-        List of unique raw places from Google Places API v1
+        Dict with 'lat' and 'lng' keys if successful, None if geocoding fails
+
+    Example:
+        result = geocode_location("Clarke Quay")
+        # Returns: {'lat': 1.2931, 'lng': 103.8467}
     """
-    all_results = []
-    seen_place_ids: Set[str] = set()
+    api_key = os.getenv('GOOGLE_MAPS_API_KEY')
+    if not api_key:
+        raise ValueError("GOOGLE_MAPS_API_KEY not set in environment")
 
-    for keyword in keywords:
-        print(f"Searching for each keyword: '{keyword}'")
+    # Use Text Search API for geocoding
+    url = "https://places.googleapis.com/v1/places:searchText"
 
-        try:
-            results = search_places(
-                location=location,
-                radius=radius,
-                keyword=keyword,
-                max_results=max_results,
-                min_rating=min_rating
-            )
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location"
+    }
 
-            # Deduplicate by place id
-            new_results = []
-            for place in results:
-                place_id = place.get('id')
-                if place_id and place_id not in seen_place_ids:
-                    seen_place_ids.add(place_id)
-                    new_results.append(place)
+    # Format query to include country for better accuracy
+    query = f"{location_name}, {country}" if country else location_name
 
-            all_results.extend(new_results)
-            print(f"Added {len(new_results)} unique places for '{keyword}' (total: {len(all_results)})")
+    body = {
+        "textQuery": query,
+        "languageCode": "en",
+        "maxResultCount": 1  # Only need the top result
+    }
 
-        except Exception as e:
-            logger.error(f"Error searching for '{keyword}': {e}")
-            continue
+    print(f"Geocoding location: '{location_name}' in {country}...")
 
-    return all_results
+    try:
+        response = requests.post(url, headers=headers, json=body, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        places = data.get('places', [])
+        if not places:
+            print(f"No results found for '{location_name}'")
+            return None
+
+        # Extract location from first result
+        place = places[0]
+        location = place.get('location', {})
+        display_name = place.get('displayName', {})
+        formatted_address = place.get('formattedAddress', '')
+
+        lat = location.get('latitude')
+        lng = location.get('longitude')
+
+        if lat is not None and lng is not None:
+            place_name = display_name.get('text', location_name) if isinstance(display_name, dict) else display_name
+            print(f"[OK] Geocoded '{location_name}' to {place_name}: ({lat:.4f}, {lng:.4f})")
+            print(f"  Address: {formatted_address}")
+            return {'lat': lat, 'lng': lng}
+
+        print(f"Location data incomplete for '{location_name}'")
+        return None
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Geocoding error for '{location_name}': {e}")
+        print(f"[ERROR] Geocoding failed for '{location_name}': {e}")
+        return None
+    except Exception as e:
+        logger.exception(f"Unexpected geocoding error: {e}")
+        print(f"[ERROR] Unexpected error geocoding '{location_name}': {e}")
+        return None
+
 
 def get_place_details(place_ids, field=None, details_per_second=5.0, max_retries=3, language='en', max_workers=5):
     """
@@ -613,3 +679,98 @@ def extract_tags_from_description(
     except Exception as e:
         logger.debug(f"LLM tag extraction failed for {name}: {e}")
         return []
+
+def get_exclusions_for_uninterest(uninterest: str) -> List[str]:
+    """
+    Get list of Google Place types to exclude for a given uninterest.
+
+    Args:
+        uninterest: User's uninterest keyword
+
+    Returns:
+        List of Google Place types to exclude
+    """
+    uninterest = uninterest.lower().strip()
+
+    # Check direct mapping
+    if uninterest in UNINTEREST_MAPPINGS:
+        return UNINTEREST_MAPPINGS[uninterest].copy()
+
+    # Check special categories
+    if uninterest in SPECIAL_INTEREST_CATEGORIES:
+        return SPECIAL_INTEREST_CATEGORIES[uninterest]["exclude"].copy()
+
+    # Check for partial matches
+    for key, value in UNINTEREST_MAPPINGS.items():
+        if key in uninterest or uninterest in key:
+            return value.copy() if isinstance(value, list) else [value]
+
+    return []
+
+def convert_dietary_to_exclusions(dietary_restrictions: List[str]) -> List[str]:
+    """
+    Convert dietary restrictions to Google Places API excluded types.
+
+    Args:
+        dietary_restrictions: List of dietary restrictions (e.g., ["vegetarian", "halal"])
+
+    Returns:
+        List of place types to exclude
+    """
+    excluded_types = []
+    for restriction in dietary_restrictions:
+        restriction_lower = restriction.lower().strip()
+        if restriction_lower in DIETARY_EXCLUSIONS:
+            excluded_types.extend(DIETARY_EXCLUSIONS[restriction_lower])
+
+    # Deduplicate
+    return list(set(excluded_types))
+
+
+def generate_place_description(place_data: dict, openai_client=None) -> str:
+    """
+    Generate a Singapore-specific place description using LLM.
+    Only call this if API doesn't provide editorialSummary.
+
+    Args:
+        place_data: Dictionary containing place information
+        openai_client: OpenAI client instance (optional)
+
+    Returns:
+        Generated description string, or fallback if generation fails
+    """
+    from config import PLACE_DESCRIPTION_PROMPT, LLM_CONFIG
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # If no OpenAI client, return fallback
+    if not openai_client:
+        return f"A {place_data.get('type', 'place')} in Singapore."
+
+    try:
+        prompt = PLACE_DESCRIPTION_PROMPT.format(
+            name=place_data.get('name', 'Unknown'),
+            address=place_data.get('address', 'No address'),
+            lat=place_data.get('latitude', 0),
+            lng=place_data.get('longitude', 0),
+            neighborhood=place_data.get('neighborhood', 'Unknown area'),
+            place_type=place_data.get('type', 'Unknown')
+        )
+
+        response = openai_client.chat.completions.create(
+            model=LLM_CONFIG["model"],
+            temperature=LLM_CONFIG["temperature"],
+            messages=[
+                {"role": "system", "content": "You are a Singapore travel expert. Generate concise, informative place descriptions."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=200
+        )
+
+        description = response.choices[0].message.content.strip()
+        return description
+
+    except Exception as e:
+        logger.debug(f"LLM description generation failed for {place_data.get('name')}: {e}")
+        return f"A {place_data.get('type', 'place')} located at {place_data.get('address', 'Singapore')}."
