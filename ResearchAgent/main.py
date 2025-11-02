@@ -105,7 +105,7 @@ except FileNotFoundError:
 from tools import (
     search_places, get_place_details, remove_unicode, standardize_opening_hours, generate_tags,
     get_exclusions_for_uninterest, convert_dietary_to_exclusions, generate_place_description,
-    geocode_location
+    geocode_location, analyze_interests_with_llm
 )
 from config import INTEREST_MAPPINGS, SPECIAL_INTEREST_CATEGORIES
 from tool_clustering import calculate_geo_cluster
@@ -1792,8 +1792,25 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     requirements = agent.calculate_required_places(pace, duration_days)
     print(f"Requirements: {requirements['attractions_needed']} attractions + {requirements['food_places_needed']} food = {requirements['total_needed']} total")
 
-    # Map interests
-    mapped_interests = agent.map_interests(user_interests) if user_interests else ['tourist_attraction']
+    # Analyze user interests with LLM to separate location-based and category-based interests
+    location_based_interests = []
+    category_based_interests = []
+
+    if user_interests:
+        analyzed_interests = analyze_interests_with_llm(user_interests, agent.client)
+        for item in analyzed_interests:
+            if item.get('type') == 'location':
+                location_based_interests.append(item)
+            else:
+                category_based_interests.append(item)
+
+    # Map category-based interests to place types
+    category_interest_strings = [item.get('original', '') for item in category_based_interests]
+    mapped_interests = agent.map_interests(category_interest_strings) if category_interest_strings else []
+
+    # If no interests at all, use default
+    if not mapped_interests and not location_based_interests:
+        mapped_interests = ['tourist_attraction']
 
     # Convert uninterests and dietary restrictions to exclusions FIRST
     excluded_types_from_uninterests = []
@@ -1836,28 +1853,84 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     print(f"Excluded types (food): {food_excluded_types}")
 
     # Search attractions using batch search (array of types)
-    print(f"\n=== Searching for Attractions (batch search) ===")
+    print(f"\n=== Searching for Attractions ===")
     attraction_results = []
 
-    # Google Places API searchNearby: maximum 5 types in includedTypes
-    batch_size = min(5, len(mapped_interests))
-    search_types = mapped_interests[:batch_size]
+    # FIRST: Search for location-based interests (e.g., "exploring near Changi Airport")
+    if location_based_interests:
+        print(f"\n--- Location-based interests ({len(location_based_interests)}) ---")
+        for loc_interest in location_based_interests:
+            if agent.check_timeout(start_time):
+                break
 
-    print(f"Searching for types (max 5): {search_types}")
+            original = loc_interest.get('original', '')
+            location_query = loc_interest.get('location_query', '')
 
-    # Use default min_rating 4.0 for attractions (3.5 if all are shopping malls)
-    has_shopping_mall = 'shopping_mall' in search_types
-    min_rating = 3.5 if has_shopping_mall and len(search_types) == 1 else 4.0
+            print(f"\nSearching near '{location_query}' (from interest: '{original}')")
 
-    # Search with array of types - API will return mixed results
-    results = agent.search_with_requirements(
-        location, search_types, min_rating,
-        requirements['attractions_needed'],
-        search_type='attraction',
-        excluded_types=attraction_excluded_types
-    )
-    attraction_results.extend(results)
-    print(f"Found {len(attraction_results)}/{requirements['attractions_needed']} attractions from batch search\n")
+            # Geocode the location
+            coords = geocode_location(location_query, country="Singapore")
+            if not coords:
+                print(f"  [ERROR] Could not find location '{location_query}', skipping...")
+                continue
+
+            # Search near this location with core attraction types
+            search_location = {'lat': coords['lat'], 'lng': coords['lng']}
+            search_types = core_types_priority[:5]  # Use top 5 core types
+
+            print(f"  Searching for {search_types} near ({coords['lat']:.4f}, {coords['lng']:.4f})")
+
+            # Calculate how many more attractions we need
+            remaining_needed = requirements['attractions_needed'] - len(attraction_results)
+            if remaining_needed <= 0:
+                print(f"  Already have enough attractions ({len(attraction_results)}/{requirements['attractions_needed']})")
+                break
+
+            results = agent.search_with_requirements(
+                search_location, search_types, 4.0,
+                remaining_needed,
+                search_type='attraction',
+                excluded_types=attraction_excluded_types
+            )
+
+            # Deduplicate with existing results
+            existing_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
+            new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
+
+            attraction_results.extend(new_results)
+            print(f"  Found {len(new_results)} new attractions near '{location_query}' (total: {len(attraction_results)}/{requirements['attractions_needed']})")
+
+    # SECOND: Search for category-based interests near accommodation
+    if len(attraction_results) < requirements['attractions_needed']:
+        print(f"\n--- Category-based search (batch) ---")
+
+        # Google Places API searchNearby: maximum 5 types in includedTypes
+        batch_size = min(5, len(mapped_interests))
+        search_types = mapped_interests[:batch_size]
+
+        print(f"Searching for types (max 5): {search_types}")
+
+        # Use default min_rating 4.0 for attractions (3.5 if all are shopping malls)
+        has_shopping_mall = 'shopping_mall' in search_types
+        min_rating = 3.5 if has_shopping_mall and len(search_types) == 1 else 4.0
+
+        # Calculate how many more we need
+        remaining_needed = requirements['attractions_needed'] - len(attraction_results)
+
+        # Search with array of types - API will return mixed results
+        results = agent.search_with_requirements(
+            location, search_types, min_rating,
+            remaining_needed,
+            search_type='attraction',
+            excluded_types=attraction_excluded_types
+        )
+
+        # Deduplicate with existing results
+        existing_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
+        new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
+
+        attraction_results.extend(new_results)
+        print(f"Found {len(new_results)} new from batch search (total: {len(attraction_results)}/{requirements['attractions_needed']})\n")
 
     # Fallback mechanism: if still not enough results, try broader search
     if len(attraction_results) < requirements['attractions_needed']:
