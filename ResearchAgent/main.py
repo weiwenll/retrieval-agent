@@ -46,7 +46,6 @@ load_dotenv()
 # Check API keys
 print("API Keys Status:")
 print(f"GOOGLE_MAPS_API_KEY: {'Set' if os.getenv('GOOGLE_MAPS_API_KEY') else 'Missing'}")
-print(f"CLIMATIQ_API_KEY: {'Set' if os.getenv('CLIMATIQ_API_KEY') else 'Missing'}")
 print(f"OPENAI_API_KEY: {'Set' if os.getenv('OPENAI_API_KEY') else 'Missing'}")
 print(f"ANTHROPIC_API_KEY: {'Set' if os.getenv('ANTHROPIC_API_KEY') else 'Missing'}")
 
@@ -763,6 +762,8 @@ class PlacesResearchAgent:
             "place_id": place_id,
             "name": remove_unicode(name),
             "type": place_type,
+            "types": place_data.get('types'),
+            "primaryType": place_data.get('primaryType'),
             "cost_sgd": self._map_price_level_to_cost(price_level),
             "price_level": price_level,
             "onsite_co2_kg": None,
@@ -780,8 +781,9 @@ class PlacesResearchAgent:
             "accessibility_options": accessibility_options,
             "low_carbon_score": None,
             "description": remove_unicode(description),
-            "links": {"official": place_data.get('website'), "reviews": reviews_count},
+            "links": place_data.get('website'),
             "rating": place_data.get('rating'),
+            "userRatingCount": place_data.get('userRatingCount'),  # Number of user ratings from Google
             "tags": tags
         }
 
