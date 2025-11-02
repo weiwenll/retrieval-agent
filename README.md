@@ -61,9 +61,19 @@
 
 ### Running
 
-1. **Start Jupyter**
-   ```bash
-   jupyter notebook
-   # or
-   jupyter lab
-   ```
+#### Option 1: Run ResearchAgent Directly
+
+```bash
+# Run the ResearchAgent with an input file
+python ResearchAgent/main.py ResearchAgent/inputs/tourist_input.json ResearchAgent/output.json
+
+# Or use any other input file
+python ResearchAgent/main.py <input_file_path> <output_file_path>
+```
+
+**Example input files:**
+- `ResearchAgent/inputs/tourist_input.json` - Tourist planning with location-based interests
+
+**Output:**
+- Results written to specified output file (e.g., `ResearchAgent/output.json`)
+- Contains structured place data with attractions and food recommendations
