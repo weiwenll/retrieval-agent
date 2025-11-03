@@ -12,33 +12,17 @@ load_dotenv()
 
 # API Configuration
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-CLIMATIQ_API_KEY = os.getenv("CLIMATIQ_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Google Routes API Configuration
 GOOGLE_ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 GOOGLE_ROUTES_API_VERSION = "v2"
 
-# CLIMATIQ API Configuration
-CLIMATIQ_API_URL = "https://api.climatiq.io/data/v1/estimate"
-CLIMATIQ_API_VERSION = "v1"
-
 # Transport Mode Mappings for Google Routes API
 GOOGLE_TRAVEL_MODES = {
     "DRIVE": "car",
     "TRANSIT": "public_transport",
     "WALK": "walking"
-}
-
-# Transport Mode Mappings for CLIMATIQ API
-CLIMATIQ_TRANSPORT_TYPES = {
-    "car": "passenger_vehicle-vehicle_type_car-fuel_source_na-distance_na-engine_size_na",
-    "taxi": "passenger_vehicle-vehicle_type_car-fuel_source_na-distance_na-engine_size_na",
-    "bus": "passenger_vehicle-vehicle_type_bus-fuel_source_na-distance_na-engine_size_na",
-    "train": "passenger_train-route_type_commuter_rail-fuel_source_na",
-    "mrt": "passenger_train-route_type_metro-fuel_source_na",
-    "bicycle": "none",  # No emissions
-    "walking": "none"   # No emissions
 }
 
 # Transport Filtering Thresholds
@@ -90,27 +74,6 @@ CONCURRENT_CONFIG = {
     "retry_delay_seconds": 1  # Delay between retries
 }
 
-# Carbon emission factors (kg CO2 per km per passenger)
-# These are fallback values if CLIMATIQ API is unavailable
-FALLBACK_EMISSION_FACTORS = {
-    "car": 0.192,
-    "taxi": 0.192,
-    "bus": 0.089,
-    "train": 0.041,
-    "mrt": 0.041,
-    "bicycle": 0.0,
-    "walking": 0.0
-}
-
-# Carbon emission factors for simple estimation (kg CO2 per km)
-EMISSION_FACTORS = {
-    "driving": 0.21,
-    "taxi": 0.22,
-    "bus": 0.09,
-    "mrt": 0.035,
-    "cycle": 0,
-    "walking": 0.02
-}
 
 # Geo cluster IDs used in Singapore
 GEO_CLUSTERS = ["central", "north", "south", "east", "west"]
@@ -124,7 +87,6 @@ def validate_api_keys() -> Dict[str, bool]:
     """
     return {
         "GOOGLE_MAPS_API_KEY": bool(GOOGLE_MAPS_API_KEY),
-        "CLIMATIQ_API_KEY": bool(CLIMATIQ_API_KEY),
         "OPENAI_API_KEY": bool(OPENAI_API_KEY)
     }
 
