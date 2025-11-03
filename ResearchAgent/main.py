@@ -126,18 +126,19 @@ class PlacesResearchAgent:
         results = agent.research_and_format(input_data)
     """
 
-    def __init__(self, system_prompt=""):
+    def __init__(self, system_prompt="", num_travelers: int = 1):
         # Initialize OpenAI client
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
+
         # Agent configuration
         self.model_name = "gpt-4o"
         self.temperature = 0.3
-        
+        self.num_travelers = num_travelers  # Total travelers (adults + children) for carbon calculation
+
         # Message history
         self.messages = []
         self.system_prompt = system_prompt or self._get_default_system_prompt()
-        
+
         if self.system_prompt:
             self.messages.append({"role": "system", "content": self.system_prompt})
         
@@ -379,22 +380,25 @@ class PlacesResearchAgent:
                     all_places.extend(places)
         return all_places
 
-    def calculate_required_places(self, pace: str, duration_days: int, multiplier: float = None) -> dict:
+    def calculate_required_places(self, pace: str, duration_days: int, attraction_multiplier: float = None, food_multiplier: float = None) -> dict:
         """
         Calculate exact number of places needed.
 
         Formula:
-        - Attractions: pace_value * days * multiplier (minimum multiplier = 2)
-        - Food: 2 per day (minimum)
+        - Attractions: pace_value * days * attraction_multiplier (minimum = 2.0)
+        - Food: geo_clusters * days * food_multiplier (minimum = 1.0)
 
         Args:
             pace: Trip pace (slow, relaxed, moderate, active, fast)
             duration_days: Number of days
-            multiplier: Optional multiplier override (default from env or 2)
+            attraction_multiplier: Optional override (default from config: ATTRACTION_MULTIPLIER)
+            food_multiplier: Optional override (default from config: FOOD_MULTIPLIER)
 
         Returns:
             dict with attractions_needed, food_places_needed, total_needed
         """
+        from config import ATTRACTION_MULTIPLIER, FOOD_MULTIPLIER, SINGAPORE_GEOCLUSTERS_POINTS
+
         pace_mapping = {
             "slow": 2,
             "relaxed": 3,
@@ -405,24 +409,30 @@ class PlacesResearchAgent:
 
         pace_value = pace_mapping.get(pace.lower(), 4)
 
-        # Get multiplier from env or parameter (minimum 2)
-        if multiplier is None:
-            multiplier = float(os.getenv("MAX_PLACES_MULTIPLIER", "2"))
-        multiplier = max(multiplier, 2.0)  # Enforce minimum of 2
+        # Get attraction multiplier from config or parameter (minimum 2.0)
+        if attraction_multiplier is None:
+            attraction_multiplier = ATTRACTION_MULTIPLIER
 
-        # Attractions calculation: pace * days * multiplier
-        attractions_needed = int(pace_value * duration_days * multiplier)
+        # Get food multiplier from config or parameter (minimum 1.0)
+        if food_multiplier is None:
+            food_multiplier = FOOD_MULTIPLIER
 
-        # Food calculation: 2 per day minimum
-        food_per_day = 2
-        food_places_needed = food_per_day * duration_days
+        # Attractions calculation: pace * days * attraction_multiplier
+        attractions_needed = int(pace_value * duration_days * attraction_multiplier)
+
+        # Food calculation: num_clusters * days * food_multiplier
+        # Example: 5 clusters * 3 days * 1.0 = 15 food places (1 from each cluster per day)
+        num_clusters = len(SINGAPORE_GEOCLUSTERS_POINTS)
+        food_places_needed = int(num_clusters * duration_days * food_multiplier)
 
         requirements = {
             "attractions_needed": attractions_needed,
             "food_places_needed": food_places_needed,
             "total_needed": attractions_needed + food_places_needed,
             "pace_value": pace_value,
-            "multiplier": multiplier
+            "attraction_multiplier": attraction_multiplier,
+            "food_multiplier": food_multiplier,
+            "num_geo_clusters": num_clusters,
         }
 
         logger.info(f"Requirements: {requirements['attractions_needed']} attractions + {requirements['food_places_needed']} food = {requirements['total_needed']} total")
@@ -541,12 +551,109 @@ class PlacesResearchAgent:
             return True
         return False
 
-    def search_with_requirements(self, location, included_types, min_rating, max_results_needed, search_type='attraction', excluded_types=None, destination_city=None):
+    def search_food_by_geo_clusters(
+        self,
+        food_search_terms: List[str],
+        duration_days: int,
+        food_multiplier: float,
+        excluded_types: List[str] = None,
+        destination_city: str = "Singapore"
+    ) -> List[Dict]:
+        """
+        Search for food places distributed across Singapore geo clusters.
+
+        For each cluster:
+        - Target: duration_days * food_multiplier food places
+        - Start: radius=5000m, min_rating=4.5
+        - Fallback: expand radius and lower rating (handled by search_with_requirements)
+
+        Args:
+            food_search_terms: List of food search terms/types
+            duration_days: Number of trip days
+            food_multiplier: Multiplier from config (default 1.0)
+            excluded_types: Types to exclude
+            destination_city: City filter (default "Singapore")
+
+        Returns:
+            List of food places distributed across all clusters
+        """
+        from config import SINGAPORE_GEOCLUSTERS_POINTS, FOOD_SEARCH_PARAMS_BY_CLUSTER
+
+        # Calculate target per cluster
+        target_per_cluster = int(duration_days * food_multiplier)
+        total_clusters = len(SINGAPORE_GEOCLUSTERS_POINTS)
+
+        print(f"Target: {target_per_cluster} food place(s) from each of {total_clusters} clusters")
+        print(f"Total target: {target_per_cluster * total_clusters} food places\n")
+
+        all_food_results = []
+        cluster_stats = {}
+
+        for cluster_name, cluster_loc in SINGAPORE_GEOCLUSTERS_POINTS.items():
+            # Get cluster-specific search parameters or use defaults
+            cluster_params = FOOD_SEARCH_PARAMS_BY_CLUSTER.get(cluster_name, {})
+            min_rating = cluster_params.get("min_rating", 4.5)  # Default 4.5
+            initial_radius = cluster_params.get("initial_radius", 5000)  # Default 5000m
+
+            print(f"\n--- Cluster: {cluster_name.upper()} ({cluster_loc['lat']:.4f}, {cluster_loc['lon']:.4f}) ---")
+            print(f"    Search params: min_rating={min_rating}, initial_radius={initial_radius}m")
+
+            cluster_results = []
+
+            # Search each food term in this cluster
+            for food_term in food_search_terms:
+                if len(cluster_results) >= target_per_cluster:
+                    print(f"✓ Cluster target reached: {len(cluster_results)}/{target_per_cluster}")
+                    break
+
+                # Convert lon to lng for consistency
+                location = {"lat": cluster_loc["lat"], "lng": cluster_loc["lon"]}
+
+                # Use search_with_requirements with cluster-specific parameters
+                # Fallback logic (expand radius, lower rating) is built-in
+                results = self.search_with_requirements(
+                    location=location,
+                    included_types=food_term,
+                    min_rating=min_rating,  # Cluster-specific rating
+                    max_results_needed=target_per_cluster - len(cluster_results),
+                    search_type='food',
+                    excluded_types=excluded_types,
+                    destination_city=destination_city,
+                    initial_radius=initial_radius  # Cluster-specific radius
+                )
+
+                # Deduplicate within cluster
+                existing_ids = {p.get('id') or p.get('place_id') for p in cluster_results}
+                new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
+
+                cluster_results.extend(new_results)
+                print(f"  {food_term}: +{len(new_results)} (cluster total: {len(cluster_results)}/{target_per_cluster})")
+
+            # Track cluster stats
+            cluster_stats[cluster_name] = len(cluster_results)
+            all_food_results.extend(cluster_results)
+
+            print(f"✓ {cluster_name}: {len(cluster_results)}/{target_per_cluster} food places")
+
+        # Print summary
+        print(f"\n{'='*60}")
+        print(f"FOOD SEARCH SUMMARY (Geo-Cluster Distribution)")
+        print(f"{'='*60}")
+        for cluster_name, count in cluster_stats.items():
+            status = "✓" if count >= target_per_cluster else "⚠"
+            print(f"{status} {cluster_name:12} {count:2}/{target_per_cluster} places")
+        print(f"{'='*60}")
+        print(f"Total food places: {len(all_food_results)}/{target_per_cluster * total_clusters}")
+        print(f"{'='*60}\n")
+
+        return all_food_results
+
+    def search_with_requirements(self, location, included_types, min_rating, max_results_needed, search_type='attraction', excluded_types=None, destination_city=None, initial_radius=None):
         """
         Progressive search: Expand radius FIRST, then relax rating ONLY if needed
 
         Strategy progressively:
-        1. Widens search radius (5km → 7.5km → 10km → ... → 50km)
+        1. Widens search radius (initial_radius → ... → 35km)
         2. Relaxes rating requirements (start high, gradually lower by ~0.1-0.2 per level)
 
         The entire rating curve shifts based on the passed min_rating:
@@ -562,6 +669,7 @@ class PlacesResearchAgent:
             search_type: 'attraction' or 'food' (determines rating floor)
             excluded_types: Place types to exclude (optional)
             destination_city: City name to filter results by (e.g., "Singapore")
+            initial_radius: Starting search radius in meters (default: 10000m)
 
         Returns:
             List of places (up to max_results_needed)
@@ -572,6 +680,7 @@ class PlacesResearchAgent:
         strategies = []
         max_radius = 35000  # Google Places API maximum
         radius_step = 10000  # Expand by 10km each time (reduced API calls)
+        start_radius = initial_radius if initial_radius else radius_step  # Use custom initial radius if provided
 
         # Food: stricter floor (3.5), Attractions: more relaxed floor (3.0)
         rating_floor = 3.5 if search_type == 'food' else 3.0
@@ -580,8 +689,8 @@ class PlacesResearchAgent:
         # For each rating level (starting at min_rating, decreasing by 0.1 until floor)
         current_rating = min_rating
         while current_rating >= rating_floor:
-            # Sweep through all radii at this rating level (10km, 20km, ..., 50km)
-            for radius in range(radius_step, max_radius + 1, radius_step):
+            # Sweep through all radii at this rating level (start_radius, start_radius+10km, ..., max_radius)
+            for radius in range(start_radius, max_radius + 1, radius_step):
                 strategies.append({
                     'radius': radius,
                     'max_results': 20,
@@ -589,7 +698,7 @@ class PlacesResearchAgent:
                 })
             current_rating -= rating_decrement
 
-        logger.info(f"Generated {len(strategies)} search strategies (ratings: {min_rating} down to {rating_floor}, radii: {radius_step/1000}km to {max_radius/1000}km per rating)")
+        logger.info(f"Generated {len(strategies)} search strategies (ratings: {min_rating} down to {rating_floor}, radii: {start_radius/1000}km to {max_radius/1000}km per rating)")
 
         all_results = []
 
@@ -711,7 +820,6 @@ class PlacesResearchAgent:
         primary_type_v1 = place_data.get('primaryType')
         if primary_type_v1 and primary_type_v1 not in all_types:
             all_types.insert(0, primary_type_v1)
-        place_type = self._map_to_standard_type(all_types)
 
         # Extract rating and review count (API v1: rating, userRatingCount)
         rating = place_data.get('rating')
@@ -738,18 +846,18 @@ class PlacesResearchAgent:
                 'latitude': geo.get('latitude', 0) if geo else 0,
                 'longitude': geo.get('longitude', 0) if geo else 0,
                 'neighborhood': address.split(',')[-2].strip() if address and ',' in address else 'Singapore',
-                'type': place_type
+                'type': primary_type_v1 or (all_types[0] if all_types else 'tourist_attraction')
             }
             description = generate_place_description(description_data, openai_client=self.client)
         else:
-            description = editorial_text or f"A {place_type} in Singapore"
+            description = editorial_text or f"A {primary_type_v1 or (all_types[0] if all_types else 'place')} in Singapore"
 
         # Extract website (API v1: websiteUri)
         website = place_data.get('websiteUri')
 
         # Generate enhanced tags
         tags = generate_tags(
-            place_type=place_type,
+            place_type=primary_type_v1 or (all_types[0] if all_types else 'tourist_attraction'),
             all_types=all_types,
             accessibility_options=accessibility_options,
             price_level=price_level,
@@ -760,15 +868,33 @@ class PlacesResearchAgent:
             openai_client=self.client
         )
 
+        # Calculate onsite carbon emissions
+        # Determine which type to use for carbon calculation: primaryType first, fallback to first type in types
+        carbon_type = primary_type_v1
+        if not carbon_type and all_types:
+            # Fallback: use first type from types array (no LLM)
+            carbon_type = all_types[0]
+
+        onsite_co2_kg = None
+        low_carbon_score = None
+        if carbon_type:
+            try:
+                from singapore_onsite_carbon_score import get_place_carbon_details
+                details = get_place_carbon_details(carbon_type, num_people=1)
+                onsite_co2_kg = details.get("co2e_total_kg")
+                low_carbon_score = details.get("low_carbon_score")
+            except Exception as e:
+                logger.warning(f"Failed to calculate carbon for {carbon_type}: {e}")
+
         return {
             "place_id": place_id,
             "name": remove_unicode(name),
-            "type": place_type,
             "types": place_data.get('types'),
-            "primaryType": place_data.get('primaryType'),
+            "primaryType": place_data.get('primaryType', 'point_of_interest'),
             "cost_sgd": self._map_price_level_to_cost(price_level),
             "price_level": price_level,
-            "onsite_co2_kg": None,
+            "onsite_co2_kg": onsite_co2_kg,
+            "low_carbon_score": low_carbon_score,
             "geo": geo,
             "geo_cluster_id": geo_cluster_id,
             "address": remove_unicode(address) if address else None,
@@ -781,7 +907,6 @@ class PlacesResearchAgent:
                 "senior": None
             },
             "accessibility_options": accessibility_options,
-            "low_carbon_score": None,
             "description": remove_unicode(description),
             "links": place_data.get('website'),
             "rating": place_data.get('rating'),
@@ -872,93 +997,6 @@ class PlacesResearchAgent:
             accessibility_options.append("wheelchair_accessible_entrance")
 
         return accessibility_options
-
-    def _map_to_standard_type(self, google_types) -> str:
-        """
-        Map Google Places types to standard type.
-        Prioritizes specific types over generic ones.
-
-        Args:
-            google_types: Either a string (single type) or list of types from Google API
-
-        Returns:
-            Standard type string
-        """
-        # Handle single string input (backwards compatibility)
-        if isinstance(google_types, str):
-            google_types = [google_types]
-
-        if not google_types:
-            return "attraction"
-
-        # Type mapping with priorities
-        # Priority 1: Food-related (most specific)
-        food_types = {
-            "restaurant": "food",
-            "food": "food",
-            "meal_delivery": "food",
-            "meal_takeaway": "food",
-            "cafe": "cafe",
-            "bar": "bar",
-            "bakery": "bakery",
-            "night_club": "bar"
-        }
-
-        # Priority 2: Specific attractions
-        attraction_types = {
-            "park": "park",
-            "museum": "museum",
-            "art_gallery": "museum",
-            "tourist_attraction": "attraction",
-            "amusement_park": "attraction",
-            "aquarium": "attraction",
-            "zoo": "attraction"
-        }
-
-        # Priority 3: Shopping and accommodation
-        other_specific = {
-            "shopping_mall": "shopping",
-            "lodging": "accommodation",
-            "hotel": "accommodation"
-        }
-
-        # Priority 4: Generic (lowest priority)
-        generic_types = {
-            "establishment": "attraction",
-            "point_of_interest": "attraction"
-        }
-
-        # Check types in priority order
-        for gtype in google_types:
-            gtype_lower = gtype.lower()
-
-            # Check food types first (highest priority)
-            if gtype_lower in food_types:
-                return food_types[gtype_lower]
-
-        for gtype in google_types:
-            gtype_lower = gtype.lower()
-
-            # Check specific attraction types
-            if gtype_lower in attraction_types:
-                return attraction_types[gtype_lower]
-
-        for gtype in google_types:
-            gtype_lower = gtype.lower()
-
-            # Check other specific types
-            if gtype_lower in other_specific:
-                return other_specific[gtype_lower]
-
-        for gtype in google_types:
-            gtype_lower = gtype.lower()
-
-            # Check generic types last
-            if gtype_lower in generic_types:
-                return generic_types[gtype_lower]
-
-        # Default fallback
-        return "attraction"
 
     def _map_price_level_to_cost(self, price_level: Optional[int]) -> Optional[int]:
         """Map Google's price level (0-4) to SGD cost estimate."""
@@ -1127,15 +1165,18 @@ class PlacesResearchFormattingAgent:
         place_id = search_data.get('place_id') or details_data.get('place_id')
         name = search_data.get('name') or details_data.get('name', 'Unknown Place')
         
-        # Extract types and map to standard type
+        # Extract types (use first type as primary if available)
         types = search_data.get('types', []) or details_data.get('types', [])
-        primary_type = self._map_to_standard_type(types[0] if types else None)
+        primary_type = types[0] if types else 'tourist_attraction'
         
         # Extract geo coordinates
         geo = self._extract_geo(search_data, details_data)
-        
+
         # Calculate geo_cluster_id
-        geo_cluster_id = self._calculate_geo_cluster(geo)
+        geo_cluster_id = self._calculate_geo_cluster(
+            lat=geo.get('latitude') if geo else None,
+            lng=geo.get('longitude') if geo else None
+        )
         
         # Extract address (prefer details formatted_address, fallback to vicinity)
         address = (details_data.get('formatted_address') or 
@@ -1197,29 +1238,48 @@ class PlacesResearchFormattingAgent:
         
         return formatted_place
     
-    def _calculate_geo_cluster(self, geo: Optional[Dict]) -> Optional[str]:
-        """Calculate geo cluster ID from coordinates using Singapore geographic rules."""
-        if not geo or not geo.get('latitude') or not geo.get('longitude'):
+    def _calculate_geo_cluster(self, lat=None, lng=None) -> Optional[str]:
+        """
+        Calculate geo cluster ID from coordinates using Singapore geographic rules.
+
+        Args:
+            lat: Latitude value (accepts 'latitude', 'lat', or numeric value)
+            lng: Longitude value (accepts 'longitude', 'lng', 'lon', or numeric value)
+
+        Returns:
+            Cluster ID string or None if invalid/missing coordinates
+        """
+        if lat is None or lng is None:
             return None
-            
-        lat = geo['latitude']
-        lng = geo['longitude']
-        
+
         # Singapore bounds check
         if not (1.1 <= lat <= 1.5 and 103.6 <= lng <= 104.1):
             return None
-        
-        # Cluster logic for Singapore
-        if 1.25 <= lat <= 1.35 and 103.7 <= lng <= 103.9:
-            return "central"
-        elif lat > 1.35:
-            return "north"
-        elif lat < 1.35:
-            return "south"
-        elif lng > 103.8:
-            return "east"
-        else:
-            return "west"
+
+        # Use SINGAPORE_GEOCLUSTERS_BOUNDARIES from config
+        from config import SINGAPORE_GEOCLUSTERS_BOUNDARIES
+        import math
+
+        # Find all matching regions
+        matching_regions = []
+        for region, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
+            if (bounds["lat_min"] <= lat <= bounds["lat_max"] and
+                bounds["lon_min"] <= lng <= bounds["lon_max"]):
+                # Calculate center of the region
+                center_lat = (bounds["lat_min"] + bounds["lat_max"]) / 2
+                center_lng = (bounds["lon_min"] + bounds["lon_max"]) / 2
+
+                # Calculate distance to center using Euclidean distance
+                distance = math.sqrt((lat - center_lat)**2 + (lng - center_lng)**2)
+                matching_regions.append((region, distance))
+
+        # If multiple matches, return the closest region center
+        if matching_regions:
+            matching_regions.sort(key=lambda x: x[1])  # Sort by distance
+            return matching_regions[0][0]  # Return closest region
+
+        # Fallback to unknown if no match
+        return "unknown"
     
     def _generate_wikipedia_descriptions(self, places: List[Dict]) -> List[Dict]:
         """
@@ -1454,30 +1514,6 @@ Example format:
         
         return None
     
-    def _map_to_standard_type(self, google_type: str) -> str:
-        """Map Google Places type to standard type."""
-        if not google_type:
-            return "attraction"
-        
-        type_mapping = {
-            "tourist_attraction": "attraction",
-            "point_of_interest": "attraction",
-            "establishment": "attraction",
-            "restaurant": "food",
-            "food": "food",
-            "cafe": "cafe",
-            "bar": "bar",
-            "bakery": "bakery",
-            "park": "park",
-            "museum": "museum",
-            "shopping_mall": "shopping",
-            "lodging": "accommodation",
-            "hotel": "accommodation",
-            "art_gallery": "museum"
-        }
-        
-        return type_mapping.get(google_type.lower(), "attraction")
-    
     def _map_price_level_to_cost(self, price_level: Optional[int]) -> Optional[int]:
         """Map Google's price level (0-4) to cost range."""
         if price_level is None:
@@ -1517,8 +1553,9 @@ class PlacesClusteringAgent:
     Groups places by geo_cluster_id and calculates travel connections with accommodation.
     """
 
-    def __init__(self):
+    def __init__(self, num_travelers: int = 1):
         self.accommodation_location = None
+        self.num_travelers = num_travelers  # Total number of travelers (adults + children)
         self.cluster_mapping = {
             "central": {"name": "Central Singapore"},
             "north": {"name": "Northern Singapore"},
@@ -1562,9 +1599,9 @@ class PlacesClusteringAgent:
             "total_clusters": len(clustered_results),
             "accommodation": {
                 "location": accommodation_location,
-                "geo_cluster_id": self._calculate_geo_cluster_for_coords(
-                    accommodation_location.get('lat'),
-                    accommodation_location.get('lng') or accommodation_location.get('lon')
+                "geo_cluster_id": self._calculate_geo_cluster(
+                    lat=accommodation_location.get('lat'),
+                    lng=accommodation_location.get('lng') or accommodation_location.get('lon')
                 )
             },
             "clustered_places": clustered_results
@@ -1655,27 +1692,6 @@ class PlacesClusteringAgent:
         avg_distance = sum(p['travel_from_accommodation']['distance_km'] for p in places) / len(places)
         return self._get_recommended_mode(avg_distance)
 
-    def _calculate_geo_cluster_for_coords(self, lat: float, lng: float) -> str:
-        """Calculate geo cluster for given coordinates."""
-        if not lat or not lng:
-            return "unknown"
-
-        # Singapore bounds check
-        if not (1.1 <= lat <= 1.5 and 103.6 <= lng <= 104.1):
-            return "unknown"
-
-        # Cluster logic for Singapore
-        if 1.25 <= lat <= 1.35 and 103.7 <= lng <= 103.9:
-            return "central"
-        elif lat > 1.35:
-            return "north"
-        elif lat < 1.35:
-            return "south"
-        elif lng > 103.8:
-            return "east"
-        else:
-            return "west"
-
     def _create_empty_clusters_response(self, places_data: Dict) -> Dict:
         """Create response when no places to cluster."""
         return {
@@ -1754,16 +1770,27 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     if not input_data:
         return {"error": "Failed to load input file"}
 
-    # Initialize agent
-    agent = PlacesResearchAgent()
-    start_time = time.time()
-
     # Extract parameters from requirements section
     requirements_data = input_data.get('requirements', {})
     destination_city = requirements_data.get('destination_city', 'Singapore')
     pace = requirements_data.get('pace', 'moderate')
     duration_days = requirements_data.get('duration_days', 1)
     location = requirements_data.get('optional', {}).get('accommodation_location', {})
+
+    # Extract travelers count for carbon calculation
+    travelers = requirements_data.get('travelers', {})
+    adults = travelers.get('adults')
+    children = travelers.get('children')
+
+    # Calculate total travelers only if both values exist, otherwise pass None (defaults to 1 in calculator)
+    if adults is not None and children is not None:
+        num_travelers = adults + children
+    else:
+        num_travelers = None  # Will default to 1 in calculator
+
+    # Initialize agent with travelers count
+    agent = PlacesResearchAgent(num_travelers=num_travelers if num_travelers else 1)
+    start_time = time.time()
     user_interests = requirements_data.get('optional', {}).get('interests', [])
     user_uninterests = requirements_data.get('optional', {}).get('uninterests', [])
     dietary_restrictions = requirements_data.get('optional', {}).get('dietary_restrictions', [])
@@ -1993,26 +2020,15 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     print(f"Food interests: {food_interests}")
     print(f"Food search terms: {food_search_terms}")
 
-    print(f"\n=== Searching for Food Places ===")
-    food_results = []
-    for food_term in food_search_terms:
-        if agent.check_timeout(start_time):
-            break
-        if len(food_results) >= requirements['food_places_needed']:
-            print(f"Reached target: {len(food_results)}/{requirements['food_places_needed']} food places")
-            break
-
-        # Use rating 4.5+ for food to start (will be relaxed by strategy)
-        min_food_rating = 4.5
-        results = agent.search_with_requirements(
-            location, food_term, min_food_rating,
-            requirements['food_places_needed'] - len(food_results),
-            search_type='food',
-            excluded_types=food_excluded_types,
-            destination_city=destination_city
-        )
-        food_results.extend(results)
-        print(f"Total food places so far: {len(food_results)}/{requirements['food_places_needed']}\n")
+    print(f"\n=== Searching for Food Places Across Geo Clusters ===")
+    # Use geo-cluster distribution search (searches all 7 Singapore regions)
+    food_results = agent.search_food_by_geo_clusters(
+        food_search_terms=food_search_terms,
+        duration_days=duration_days,
+        food_multiplier=requirements['food_multiplier'],
+        excluded_types=food_excluded_types,
+        destination_city=destination_city
+    )
 
     # Combine all places
     all_places = attraction_results + food_results

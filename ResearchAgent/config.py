@@ -697,3 +697,57 @@ SINGAPORE_AREA_MAPPINGS = {
     "novena": "novena",
     "bugis": "bugis"
 }
+
+# ============================================================================
+# SINGAPORE GEO CLUSTERS - Geographic search distribution
+# ============================================================================
+# Region boundaries (for location -> region mapping)
+SINGAPORE_GEOCLUSTERS_BOUNDARIES = {
+    "north": {"lat_min": 1.410, "lat_max": 1.470, "lon_min": 103.750, "lon_max": 103.860},
+    "northeast": {"lat_min": 1.340, "lat_max": 1.425, "lon_min": 103.850, "lon_max": 103.925},
+    "east": {"lat_min": 1.280, "lat_max": 1.380, "lon_min": 103.900, "lon_max": 103.985},
+    "west": {"lat_min": 1.295, "lat_max": 1.410, "lon_min": 103.685, "lon_max": 103.775},
+    "central": {"lat_min": 1.315, "lat_max": 1.390, "lon_min": 103.820, "lon_max": 103.870},
+    "downtown": {"lat_min": 1.260, "lat_max": 1.320, "lon_min": 103.825, "lon_max": 103.885},
+    "south": {"lat_min": 1.225, "lat_max": 1.315, "lon_min": 103.775, "lon_max": 103.835},
+    }
+
+
+# Geographic clusters with multiple search points for food search distribution across Singapore
+SINGAPORE_GEOCLUSTERS_POINTS = {
+    "north": {"lat": 1.4370, "lon": 103.7865}, # Woodlands Town Centre
+    "northeast": {"lat": 1.4041, "lon": 103.9025}, # Punggol Central
+    "east": {"lat": 1.3236, "lon": 103.9273}, # Bedok Town Centre
+    "central": {"lat": 1.3514, "lon": 103.8487}, # Bishan Central
+    "downtown": {"lat": 1.2838, "lon": 103.8607}, # Marina Bay/CBD
+    "west": {"lat": 1.3329, "lon": 103.7436}, # Jurong East Hub
+    "south": {"lat": 1.2654, "lon": 103.8218}, # HarbourFront/Sentosa Gateway
+}
+
+# ============================================================================
+# PLACE MULTIPLIERS - Calculate required number of places
+# ============================================================================
+
+# Minimum multiplier for attractions (pace * days * multiplier)
+ATTRACTION_MULTIPLIER = 2.0
+
+# Multiplier for food (geo clusters * days * multiplier)
+FOOD_MULTIPLIER = 1.0
+
+# ============================================================================
+# FOOD SEARCH PARAMETERS BY GEO CLUSTER
+# ============================================================================
+# Different clusters have different rating thresholds and search radius
+
+FOOD_SEARCH_PARAMS_BY_CLUSTER = {
+    "north": {
+        "min_rating": 4.3,
+        "initial_radius": 2500  # meters
+    },
+    "northeast": {
+        "min_rating": 4.3,
+        "initial_radius": 2500  # meters
+    },
+    # All other clusters use default parameters (defined in search_with_requirements)
+    # Default: min_rating=4.5, initial_radius=5000
+}
