@@ -46,7 +46,6 @@ load_dotenv()
 # Check API keys
 print("API Keys Status:")
 print(f"GOOGLE_MAPS_API_KEY: {'Set' if os.getenv('GOOGLE_MAPS_API_KEY') else 'Missing'}")
-print(f"CLIMATIQ_API_KEY: {'Set' if os.getenv('CLIMATIQ_API_KEY') else 'Missing'}")
 print(f"OPENAI_API_KEY: {'Set' if os.getenv('OPENAI_API_KEY') else 'Missing'}")
 print(f"ANTHROPIC_API_KEY: {'Set' if os.getenv('ANTHROPIC_API_KEY') else 'Missing'}")
 
@@ -265,7 +264,7 @@ class TransportSustainabilityAgent:
             CARBON EMISSIONS CALCULATION:
             For each valid transport mode:
             1. Use latitude/longitude of origin and destination
-            2. Call CLIMATIQ_API with:
+            2. Calculate carbon using Singapore emission factors:
             - Transport mode type
             - Distance traveled
             - Vehicle type (if applicable)
@@ -385,223 +384,670 @@ class TransportSustainabilityAgent:
             }
         }
 
-    def identify_location_pairs(
+    # COMMENTED OUT: Old logic for transport matrix (all place-to-place connections)
+    # def identify_location_pairs(
+    #     self,
+    #     places: List[Dict],
+    #     accommodation: Optional[Dict[str, float]] = None
+    # ) -> list:
+    #     """
+    #     Identify all unique location pairs that need transport calculations.
+    #     Creates one-way connections: A→B, A→C, B→C (but not B→A, C→A, C→B).
+    #
+    #     Args:
+    #         places: List of all places
+    #         accommodation: Optional accommodation location dict
+    #
+    #     Returns:
+    #         List of tuples (origin_coords, dest_coords, origin_name, dest_name)
+    #     """
+    #     pairs = []
+    #
+    #     # Add accommodation to all places if provided
+    #     if accommodation:
+    #         acc_location = {
+    #             "latitude": accommodation.get("lat"),
+    #             "longitude": accommodation.get("lon", accommodation.get("lng"))
+    #         }
+    #
+    #         for destination_place in places:
+    #             destination_location = destination_place.get("geo", {})
+    #             pairs.append((
+    #                 acc_location,
+    #                 destination_location,
+    #                 "Accommodation",
+    #                 destination_place.get("name", "Unknown")
+    #             ))
+    #
+    #     # Add all place-to-place pairs (one-way only)
+    #     # A→B, A→C, A→D, B→C, B→D, C→D
+    #     for i, origin_place in enumerate(places):
+    #         for destination_place in places[i+1:]:
+    #             pairs.append((
+    #                 origin_place.get("geo", {}),
+    #                 destination_place.get("geo", {}),
+    #                 origin_place.get("name", "Unknown"),
+    #                 destination_place.get("name", "Unknown")
+    #             ))
+    #
+    #     logger.info(f"Identified {len(pairs)} location pairs for transport calculation")
+    #
+    #     return pairs
+
+    # COMMENTED OUT: Old logic for calculating all routes (transport matrix)
+    # def calculate_all_routes(
+    #     self,
+    #     location_pairs: list,
+    #     concurrent: bool = True
+    # ) -> list:
+    #     """
+    #     Calculate routes and carbon emissions for all location pairs.
+    #
+    #     Args:
+    #         location_pairs: List of 4-element tuples (origin_coords, dest_coords, origin_name, dest_name)
+    #         concurrent: Whether to use concurrent processing
+    #
+    #     Returns:
+    #         List of route results with transport options and carbon data
+    #     """
+    #     from tools import batch_process_routes
+    #     from carbon_calculator import batch_calculate_carbon
+    #
+    #     logger.info(f"Calculating routes for {len(location_pairs)} location pairs...")
+    #
+    #     # Get route data for all pairs
+    #     route_results = batch_process_routes(location_pairs, concurrent=concurrent)
+    #
+    #     logger.info(f"Adding carbon emission data...")
+    #
+    #     # Add carbon emissions to all routes using hardcoded emission factors
+    #     route_results = batch_calculate_carbon(route_results)
+    #
+    #     logger.info(f"Completed route calculations")
+    #
+    #     return route_results
+
+    def calculate_day_by_day_routes(
         self,
-        places: List[Dict],
-        accommodation: Optional[Dict[str, float]] = None
-    ) -> list:
+        places_data: Dict,
+        accommodation_location: Dict
+    ) -> Dict:
         """
-        Identify all unique location pairs that need transport calculations.
-        Creates one-way connections: A→B, A→C, B→C (but not B→A, C→A, C→B).
+        Calculate routes day-by-day based on itinerary with LLM optimization.
+
+        For each day:
+        - Start from accommodation
+        - Go to morning place (if not null)
+        - Go to lunch place (if not null)
+        - Go to afternoon place (if not null)
+        - Skip null items and jump to next place
+        - Generate LLM recommendations for optimal transport
 
         Args:
-            places: List of all places
-            accommodation: Optional accommodation location dict
+            places_data: Input data with itinerary
+            accommodation_location: Dict with lat, lng of accommodation
 
         Returns:
-            List of tuples (origin_coords, dest_coords, origin_name, dest_name)
+            Dict with transport data organized by date with LLM recommendations
         """
-        pairs = []
+        from tools import get_transport_options_concurrent
 
-        # Add accommodation to all places if provided
-        if accommodation:
+        itinerary = places_data.get("itinerary", {})
+        transport = {}
+
+        # Extract user preferences for LLM
+        requirements = places_data.get("requirements", {})
+        user_preferences = {
+            "pace": requirements.get("pace"),
+            "budget_total_sgd": requirements.get("budget_total_sgd"),
+            "travelers": requirements.get("travelers"),
+            "eco_preferences": requirements.get("optional", {}).get("eco_preferences"),
+            "accessibility_needs": requirements.get("optional", {}).get("accessibility_needs")
+        }
+
+        logger.info(f"Calculating day-by-day routes for {len(itinerary)} days with LLM optimization...")
+
+        connection_id = 1
+
+        for date, day_data in itinerary.items():
+            logger.info(f"Processing day: {date}")
+
+            # Extract places for the day (morning, lunch, afternoon)
+            morning_item = day_data.get("morning", {}).get("item")
+            lunch_item = day_data.get("lunch", {}).get("item")
+            afternoon_item = day_data.get("afternoon", {}).get("item")
+
+            # Build sequence of places for the day (skip nulls)
+            sequence = []
+
+            # Always start from accommodation
             acc_location = {
-                "latitude": accommodation.get("lat"),
-                "longitude": accommodation.get("lon", accommodation.get("lng"))
+                "latitude": accommodation_location.get("lat"),
+                "longitude": accommodation_location.get("lng") or accommodation_location.get("lon")
+            }
+            sequence.append({
+                "name": "Accommodation",
+                "location": acc_location,
+                "place_id": "accommodation"
+            })
+
+            # Add morning place if not null
+            if morning_item:
+                morning_geo = morning_item.get("geo", {})
+                if morning_geo.get("latitude") and morning_geo.get("longitude"):
+                    sequence.append({
+                        "name": morning_item.get("name", "Unknown"),
+                        "location": morning_geo,
+                        "place_id": morning_item.get("place_id")
+                    })
+
+            # Add lunch place if not null
+            if lunch_item:
+                lunch_geo = lunch_item.get("geo", {})
+                if lunch_geo.get("latitude") and lunch_geo.get("longitude"):
+                    sequence.append({
+                        "name": lunch_item.get("name", "Unknown"),
+                        "location": lunch_geo,
+                        "place_id": lunch_item.get("place_id")
+                    })
+
+            # Add afternoon place if not null
+            if afternoon_item:
+                afternoon_geo = afternoon_item.get("geo", {})
+                if afternoon_geo.get("latitude") and afternoon_geo.get("longitude"):
+                    sequence.append({
+                        "name": afternoon_item.get("name", "Unknown"),
+                        "location": afternoon_geo,
+                        "place_id": afternoon_item.get("place_id")
+                    })
+
+            # Calculate routes for each leg (point to point)
+            connections = []
+            for i in range(len(sequence) - 1):
+                origin = sequence[i]
+                destination = sequence[i + 1]
+
+                logger.info(f"  Route: {origin['name']} -> {destination['name']}")
+
+                # Call Google Routes API to get transport options
+                transport_options = get_transport_options_concurrent(
+                    origin=origin['location'],
+                    destination=destination['location']
+                )
+
+                # Format transport modes like the old format
+                transport_modes = self._format_transport_modes(transport_options)
+
+                connection = {
+                    "connection_id": connection_id,
+                    "from_place_id": origin['place_id'],
+                    "to_place_id": destination['place_id'],
+                    "from_place_name": origin['name'],
+                    "to_place_name": destination['name'],
+                    "transport_modes": transport_modes
+                }
+                connections.append(connection)
+                connection_id += 1
+
+            # === LLM INTEGRATION ===
+            # 1. Intelligent Route Optimization
+            logger.info(f"  Generating LLM route optimization for {date}...")
+            route_optimization = self.optimize_daily_routes_with_llm(
+                connections, date, user_preferences
+            )
+
+            # 2. Personalized Transport Recommendations
+            logger.info(f"  Generating personalized recommendations for {date}...")
+            # Determine time of day
+            time_of_day = "morning"  # Default
+            if len(connections) > 0:
+                if morning_item:
+                    time_of_day = "morning"
+                elif lunch_item:
+                    time_of_day = "afternoon"
+                elif afternoon_item:
+                    time_of_day = "afternoon"
+
+            personalized_tips = self.generate_personalized_recommendations(
+                connections, user_preferences, time_of_day
+            )
+
+            # 3. Carbon-Conscious Travel Assistant
+            logger.info(f"  Generating carbon insights for {date}...")
+            carbon_insights = self.generate_carbon_insights(
+                connections, user_preferences.get("eco_preferences", "no")
+            )
+
+            # Store connections with LLM recommendations for this date
+            transport[date] = {
+                "connections": connections,
+                "llm_recommendations": {
+                    "route_optimization": route_optimization,
+                    "personalized_tips": personalized_tips,
+                    "carbon_insights": carbon_insights
+                }
             }
 
-            for destination_place in places:
-                destination_location = destination_place.get("geo", {})
-                pairs.append((
-                    acc_location,
-                    destination_location,
-                    "Accommodation",
-                    destination_place.get("name", "Unknown")
-                ))
+        logger.info(f"Completed day-by-day route calculations with LLM recommendations")
+        return transport
 
-        # Add all place-to-place pairs (one-way only)
-        # A→B, A→C, A→D, B→C, B→D, C→D
-        for i, origin_place in enumerate(places):
-            for destination_place in places[i+1:]:
-                pairs.append((
-                    origin_place.get("geo", {}),
-                    destination_place.get("geo", {}),
-                    origin_place.get("name", "Unknown"),
-                    destination_place.get("name", "Unknown")
-                ))
-
-        logger.info(f"Identified {len(pairs)} location pairs for transport calculation")
-
-        return pairs
-
-    def calculate_all_routes(
-        self,
-        location_pairs: list,
-        concurrent: bool = True
-    ) -> list:
+    def _format_transport_modes(self, transport_options: Dict) -> List[Dict]:
         """
-        Calculate routes and carbon emissions for all location pairs.
+        Format transport modes from Google Routes API response.
 
         Args:
-            location_pairs: List of 4-element tuples (origin_coords, dest_coords, origin_name, dest_name)
-            concurrent: Whether to use concurrent processing
+            transport_options: Dict with transport mode data
 
         Returns:
-            List of route results with transport options and carbon data
+            List of formatted transport mode entries
         """
-        from tools import batch_process_routes
-        from carbon_calculator import batch_calculate_carbon
+        from tools import carbon_estimate
 
-        logger.info(f"Calculating routes for {len(location_pairs)} location pairs...")
+        transport_modes = []
+        for mode, mode_data in transport_options.items():
+            # Map API mode names to user-friendly names
+            mode_map = {
+                "WALK": "walk",
+                "TRANSIT": "transit",
+                "DRIVE": "drive",
+                "CYCLING": "cycle"
+            }
+            friendly_mode = mode_map.get(mode, mode.lower())
 
-        # Get route data for all pairs
-        route_results = batch_process_routes(location_pairs, concurrent=concurrent)
+            # For TRANSIT mode, determine if it's mrt, bus, or public_transport
+            if mode == "TRANSIT" and "transit_summary" in mode_data:
+                transit_summary = mode_data.get("transit_summary", "").lower()
+                # Check if it contains both MRT and Bus
+                has_mrt = "mrt" in transit_summary or "metro" in transit_summary or "train" in transit_summary
+                has_bus = "bus" in transit_summary
 
-        logger.info(f"Adding carbon emission data...")
+                if has_mrt and has_bus:
+                    friendly_mode = "public_transport"
+                elif has_mrt:
+                    friendly_mode = "mrt"
+                elif has_bus:
+                    friendly_mode = "bus"
+                else:
+                    friendly_mode = "public_transport"
 
-        # Add carbon emissions to all routes using hardcoded emission factors
-        route_results = batch_calculate_carbon(route_results)
+            distance_km = mode_data.get("distance_km", 0)
+            duration_minutes = mode_data.get("duration_minutes", 0)
+            cost_sgd = mode_data.get("estimated_cost_sgd", 0.0)
 
-        logger.info(f"Completed route calculations")
+            # Calculate carbon emissions using carbon_estimate
+            carbon_kg = carbon_estimate(friendly_mode, distance_km)
 
-        return route_results
+            # Create route summary
+            route_summary = f"{distance_km} km, {duration_minutes:.0f} mins via {friendly_mode}"
 
-    def format_output(self, route_results: list, metadata: Dict, places_data: Dict) -> Dict:
+            transport_mode_entry = {
+                "mode": friendly_mode,
+                "distance_km": distance_km,
+                "duration_minutes": round(duration_minutes, 1),
+                "cost_sgd": round(cost_sgd, 2),
+                "carbon_kg": round(carbon_kg, 3),
+                "route_summary": route_summary
+            }
+
+            # Add transit summary if available (for all transit modes)
+            if mode == "TRANSIT" and "transit_summary" in mode_data:
+                transport_mode_entry["transit_summary"] = mode_data["transit_summary"]
+                transport_mode_entry["num_transfers"] = mode_data.get("num_transfers", 0)
+
+            # Add note for cycle (custom category)
+            if mode == "CYCLING":
+                transport_mode_entry["note"] = mode_data.get("note", "")
+
+            transport_modes.append(transport_mode_entry)
+
+        return transport_modes
+
+    def optimize_daily_routes_with_llm(
+        self,
+        connections: List[Dict],
+        date: str,
+        user_preferences: Dict
+    ) -> Dict:
+        """
+        Use LLM to analyze all connections for a day and provide intelligent recommendations.
+
+        Args:
+            connections: List of connection dicts with transport modes
+            date: Date string (e.g., "2025-06-01")
+            user_preferences: User preferences from input (pace, budget, eco_preferences, etc.)
+
+        Returns:
+            Dict with:
+            - recommended_modes: List of recommended transport mode per connection
+            - rationale: Explanation for recommendations
+            - optimization_summary: Overall summary of the day's transport
+        """
+        if not connections:
+            return {
+                "recommended_modes": [],
+                "rationale": "No connections to optimize",
+                "optimization_summary": "No travel required for this day"
+            }
+
+        # Prepare data for LLM
+        connections_summary = []
+        for conn in connections:
+            modes_summary = []
+            for mode_data in conn.get("transport_modes", []):
+                modes_summary.append({
+                    "mode": mode_data["mode"],
+                    "distance_km": mode_data["distance_km"],
+                    "duration_minutes": mode_data["duration_minutes"],
+                    "cost_sgd": mode_data["cost_sgd"],
+                    "carbon_kg": mode_data["carbon_kg"]
+                })
+
+            connections_summary.append({
+                "connection_id": conn["connection_id"],
+                "from": conn["from_place_name"],
+                "to": conn["to_place_name"],
+                "available_modes": modes_summary
+            })
+
+        # Extract user preferences
+        pace = user_preferences.get("pace")
+        budget_sgd = user_preferences.get("budget_total_sgd")
+        eco_preferences = user_preferences.get("eco_preferences")
+        travelers = user_preferences.get("travelers")
+        adults = travelers.get("adults")
+        children = travelers.get("children")
+
+        prompt = f"""You are a Singapore travel optimization expert. Analyze this day's transport connections and recommend the best transport mode for each leg.
+
+**Date:** {date}
+
+**Traveler Profile:**
+- Travel pace: {pace}
+- Budget: ${budget_sgd} SGD total
+- Eco-conscious: {eco_preferences}
+- Group: {adults} adult(s), {children} children
+
+**Connections for the day:**
+{json.dumps(connections_summary, indent=2)}
+
+**Your Task:**
+For each connection, recommend the BEST transport mode considering:
+1. Time efficiency (especially for {pace} pace)
+2. Cost effectiveness (total budget: ${budget_sgd})
+3. Carbon footprint ({'high priority' if eco_preferences == 'yes' else 'considered'})
+4. Family-friendliness ({'important' if children > 0 else 'not applicable'})
+5. Practicality (walking distance, transfers, comfort)
+
+**Output Format (JSON only, no markdown):**
+{{
+    "recommended_modes": [
+        {{
+            "connection_id": 1,
+            "recommended_mode": "walking",
+            "reason": "Short distance (0.9km), saves money, eco-friendly, good for {pace} pace"
+        }}
+    ],
+    "optimization_summary": "Brief summary of the day's transport strategy (2-3 sentences)",
+    "total_estimated_cost": 0.00,
+    "total_carbon_saved": 0.5,
+    "time_optimization_notes": "Any time-saving tips or warnings"
+}}
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                temperature=0.3,
+                messages=[
+                    {"role": "system", "content": "You are a Singapore travel transport optimization expert. Provide practical, cost-effective, and sustainable transport recommendations."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            llm_output = response.choices[0].message.content.strip()
+
+            # Handle markdown-wrapped JSON
+            if '```json' in llm_output:
+                import re
+                pattern = r'```json\s*(.*?)\s*```'
+                match = re.search(pattern, llm_output, re.DOTALL)
+                if match:
+                    llm_output = match.group(1).strip()
+            elif llm_output.startswith('```') and llm_output.endswith('```'):
+                lines = llm_output.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]
+                if lines[-1] == '```':
+                    lines = lines[:-1]
+                llm_output = '\n'.join(lines).strip()
+
+            result = json.loads(llm_output)
+            logger.info(f"LLM route optimization completed for {date}")
+            return result
+
+        except Exception as e:
+            logger.error(f"LLM optimization error for {date}: {e}")
+            return {
+                "recommended_modes": [],
+                "rationale": f"Optimization unavailable: {str(e)}",
+                "optimization_summary": "Unable to optimize routes"
+            }
+
+    def generate_personalized_recommendations(
+        self,
+        connections: List[Dict],
+        user_preferences: Dict,
+        time_of_day: str = "morning"
+    ) -> List[str]:
+        """
+        Generate personalized transport recommendations based on context.
+
+        Args:
+            connections: List of connection dicts
+            user_preferences: User preferences
+            time_of_day: "morning", "afternoon", "evening"
+
+        Returns:
+            List of contextual recommendation strings
+        """
+        if not connections:
+            return []
+
+        # Extract key preferences
+        travelers = user_preferences.get("travelers", {})
+        children = travelers.get("children", 0)
+        accessibility = user_preferences.get("accessibility_needs", "no_preference")
+
+        prompt = f"""You are a Singapore travel expert. Provide 3-5 SHORT, practical transport tips for these travelers.
+
+**Context:**
+- Time: {time_of_day}
+- Travelers: {travelers.get('adults', 1)} adult(s), {children} children
+- Accessibility: {accessibility}
+- Total connections today: {len(connections)}
+
+**Provide practical tips like:**
+- "Avoid rush hour (7-9 AM, 5-7 PM) for smoother MRT travel"
+- "Book GrabCar in advance during afternoon peak hours"
+- "Bring an umbrella - afternoon rain is common in Singapore"
+- "MRT stations have elevators - good for families with strollers"
+- "Walking between close attractions saves time vs. waiting for transport"
+
+**Output (JSON array of strings, 3-5 tips):**
+["tip 1", "tip 2", "tip 3"]
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                temperature=0.4,
+                messages=[
+                    {"role": "system", "content": "You are a practical Singapore travel advisor. Give SHORT, actionable tips."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            llm_output = response.choices[0].message.content.strip()
+
+            # Handle markdown-wrapped JSON
+            if '```json' in llm_output:
+                import re
+                pattern = r'```json\s*(.*?)\s*```'
+                match = re.search(pattern, llm_output, re.DOTALL)
+                if match:
+                    llm_output = match.group(1).strip()
+            elif llm_output.startswith('```') and llm_output.endswith('```'):
+                lines = llm_output.split('\n')
+                lines = [l for l in lines if not l.strip().startswith('```')]
+                llm_output = '\n'.join(lines).strip()
+
+            tips = json.loads(llm_output)
+            logger.info(f"Generated {len(tips)} personalized recommendations")
+            return tips
+
+        except Exception as e:
+            logger.error(f"Error generating personalized recommendations: {e}")
+            return ["Plan ahead for smoother travel", "Check MRT schedules before departure"]
+
+    def generate_carbon_insights(
+        self,
+        connections: List[Dict],
+        eco_preference: str = "no"
+    ) -> Dict:
+        """
+        Generate carbon-conscious travel insights and recommendations.
+
+        Args:
+            connections: List of connection dicts with carbon data
+            eco_preference: User's eco preference ("yes", "no")
+
+        Returns:
+            Dict with carbon insights and eco-friendly suggestions
+        """
+        if not connections:
+            return {
+                "total_carbon_kg": 0.0,
+                "eco_insights": [],
+                "carbon_savings_opportunities": []
+            }
+
+        # Calculate total carbon for current recommendations
+        total_carbon = 0.0
+        carbon_by_mode = {}
+
+        for conn in connections:
+            for mode_data in conn.get("transport_modes", []):
+                mode = mode_data["mode"]
+                carbon = mode_data["carbon_kg"]
+
+                if mode not in carbon_by_mode:
+                    carbon_by_mode[mode] = {"count": 0, "total_carbon": 0.0, "total_distance": 0.0}
+
+                carbon_by_mode[mode]["count"] += 1
+                carbon_by_mode[mode]["total_carbon"] += carbon
+                carbon_by_mode[mode]["total_distance"] += mode_data["distance_km"]
+
+        # Prepare summary for LLM
+        connections_carbon = []
+        for conn in connections:
+            modes_carbon = []
+            for mode_data in conn.get("transport_modes", []):
+                modes_carbon.append({
+                    "mode": mode_data["mode"],
+                    "carbon_kg": mode_data["carbon_kg"],
+                    "distance_km": mode_data["distance_km"]
+                })
+
+            connections_carbon.append({
+                "from": conn["from_place_name"],
+                "to": conn["to_place_name"],
+                "modes": modes_carbon
+            })
+
+        prompt = f"""You are a carbon footprint expert for Singapore travel. Analyze these transport connections and provide eco-friendly insights.
+
+**Eco-conscious traveler:** {eco_preference}
+
+**Today's connections:**
+{json.dumps(connections_carbon, indent=2)}
+
+**Provide:**
+1. Total carbon footprint estimate (sum lowest-carbon option for each leg)
+2. 2-3 specific eco-friendly suggestions (e.g., "Walk 0.9km instead of taxi to save 0.25kg CO₂")
+3. Carbon comparison (e.g., "Taking MRT instead of taxi all day saves 2.1kg CO₂ (equivalent to X)")
+
+**Output (JSON only):**
+{{
+    "total_carbon_kg": 0.5,
+    "eco_insights": [
+        "Walking short distances (<1km) eliminates 0.3kg CO₂ today",
+        "Public transport reduces carbon by 60% vs. taxis"
+    ],
+    "carbon_savings_opportunities": [
+        {{
+        "connection": "Accommodation → Morning place",
+        "suggestion": "Walk instead of taxi",
+        "carbon_saved_kg": 0.25,
+        "time_added_minutes": 8
+        }}
+    ],
+    "carbon_equivalent": "Today's eco-friendly choices save carbon equal to charging 50 smartphones"
+}}
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                temperature=0.3,
+                messages=[
+                    {"role": "system", "content": "You are a carbon footprint expert. Provide accurate, practical eco-friendly travel advice."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            llm_output = response.choices[0].message.content.strip()
+
+            # Handle markdown-wrapped JSON
+            if '```json' in llm_output:
+                import re
+                pattern = r'```json\s*(.*?)\s*```'
+                match = re.search(pattern, llm_output, re.DOTALL)
+                if match:
+                    llm_output = match.group(1).strip()
+            elif llm_output.startswith('```') and llm_output.endswith('```'):
+                lines = llm_output.split('\n')
+                lines = [l for l in lines if not l.strip().startswith('```')]
+                llm_output = '\n'.join(lines).strip()
+
+            result = json.loads(llm_output)
+            logger.info(f"Generated carbon insights")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error generating carbon insights: {e}")
+            return {
+                "total_carbon_kg": 0.0,
+                "eco_insights": ["Consider walking or public transport for short distances"],
+                "carbon_savings_opportunities": []
+            }
+
+    def format_output(self, transport_data: Dict, places_data: Dict) -> Dict:
         """
         Format final output with all transport and carbon data.
 
+        NEW FORMAT: Copy input JSON and append transport section with dates from itinerary.
+
         Args:
-            route_results: List of route results with transport options
-            metadata: Metadata about the input data (not used, kept for compatibility)
-            places_data: Original places data with requirements and retrieval structure
+            transport_data: Dict with transport data organized by date
+            places_data: Original places data with requirements, retrieval, and itinerary
 
         Returns:
-            Formatted output dict preserving input structure with added connection_matrix
+            Formatted output dict: input + transport section with dates
         """
-        # Extract formatted places from nested structure
-        retrieval = places_data.get("retrieval", {})
-        places_matrix = retrieval.get("places_matrix", {})
-        # Support both "candidates" (new) and "nodes" (old) for backward compatibility
-        formatted_places = places_matrix.get("candidates", places_matrix.get("nodes", []))
-
-        # Create mapping from place name to place_id
-        name_to_id = {}
-        for place in formatted_places:
-            name_to_id[place.get("name")] = place.get("place_id")
-
-        # Build connection_matrix structure
-        connections = []
-        connection_id = 1
-
-        for route_result in route_results:
-            origin_name = route_result.get("origin")
-            destination_name = route_result.get("destination")
-            transport_options = route_result.get("transport_options", {})
-
-            # Get place IDs
-            if origin_name == "Accommodation":
-                from_place_id = "accommodation"
-                to_place_id = name_to_id.get(destination_name)
-            else:
-                from_place_id = name_to_id.get(origin_name)
-                to_place_id = name_to_id.get(destination_name)
-
-            # Skip if we can't find IDs (shouldn't happen)
-            if not to_place_id or (origin_name != "Accommodation" and not from_place_id):
-                logger.warning(f"Could not find place_id for {origin_name} -> {destination_name}")
-                continue
-
-            # Format transport modes
-            transport_modes = []
-            for mode, mode_data in transport_options.items():
-                # Map API mode names to user-friendly names
-                mode_map = {
-                    "WALK": "walking",
-                    "TRANSIT": "public_transport",
-                    "DRIVE": "taxi",
-                    "CYCLING": "cycle"  # Renamed from cycling to cycle
-                }
-                friendly_mode = mode_map.get(mode, mode.lower())
-
-                # For TRANSIT mode, determine if it's mrt, bus, or public_transport
-                if mode == "TRANSIT" and "transit_summary" in mode_data:
-                    transit_summary = mode_data.get("transit_summary", "").lower()
-                    # Check if it contains both MRT and Bus
-                    has_mrt = "mrt" in transit_summary or "metro" in transit_summary or "train" in transit_summary
-                    has_bus = "bus" in transit_summary
-
-                    if has_mrt and has_bus:
-                        friendly_mode = "public_transport"
-                    elif has_mrt:
-                        friendly_mode = "mrt"
-                    elif has_bus:
-                        friendly_mode = "bus"
-                    else:
-                        friendly_mode = "public_transport"
-
-                distance_km = mode_data.get("distance_km", 0)
-                duration_minutes = mode_data.get("duration_minutes", 0)
-                cost_sgd = mode_data.get("estimated_cost_sgd", 0.0)
-
-                # Calculate carbon emissions using carbon_estimate
-                from tools import carbon_estimate
-                carbon_kg = carbon_estimate(friendly_mode, distance_km)
-
-                # Create route summary
-                route_summary = f"{distance_km} km, {duration_minutes:.0f} mins via {friendly_mode}"
-
-                transport_mode_entry = {
-                    "mode": friendly_mode,
-                    "distance_km": distance_km,
-                    "duration_minutes": round(duration_minutes, 1),
-                    "cost_sgd": round(cost_sgd, 2),
-                    "carbon_kg": round(carbon_kg, 3),
-                    "route_summary": route_summary
-                }
-
-                # Add transit summary if available (for all transit modes)
-                if mode == "TRANSIT" and "transit_summary" in mode_data:
-                    transport_mode_entry["transit_summary"] = mode_data["transit_summary"]
-                    transport_mode_entry["num_transfers"] = mode_data.get("num_transfers", 0)
-
-                # Add note for cycle (custom category)
-                if mode == "CYCLING":
-                    transport_mode_entry["note"] = mode_data.get("note", "")
-
-                transport_modes.append(transport_mode_entry)
-
-            # Add connection entry
-            connection = {
-                "connection_id": connection_id,
-                "from_place_id": from_place_id,
-                "to_place_id": to_place_id,
-                "from_place_name": origin_name,
-                "to_place_name": destination_name,
-                "transport_modes": transport_modes
-            }
-            connections.append(connection)
-            connection_id += 1
-
-        # Create output structure preserving input structure
-        # Deep copy retrieval object and update structure
+        # Copy input data wholesale, then append transport section
         import copy
-        retrieval = copy.deepcopy(places_data.get("retrieval", {}))
-
-        # Move candidates from places_matrix to same level as conditions
-        if "places_matrix" in retrieval:
-            places_matrix = retrieval.pop("places_matrix")
-            # Support both "candidates" (new) and "nodes" (old) for backward compatibility
-            candidates = places_matrix.get("candidates", places_matrix.get("nodes", []))
-            retrieval["candidates"] = candidates
-
-        # Add connections at same level as conditions (not nested in connection_matrix)
-        retrieval["total_unique_connections"] = len(connections)
-        retrieval["connections"] = connections
-
-        output = {
-            "requirements": places_data.get("requirements", {}),
-            "retrieval": retrieval
-        }
+        output = copy.deepcopy(places_data)
+        output["transport"] = transport_data
 
         return output
 
@@ -641,7 +1087,7 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
         if input_accommodation:
             accommodation_location = {
                 "lat": input_accommodation.get("lat"),
-                "lon": input_accommodation.get("lon", input_accommodation.get("lng"))
+                "lng": input_accommodation.get("lng") or input_accommodation.get("lon")
             }
             logger.info(f"Using accommodation location from input file: {accommodation_location}")
 
@@ -649,24 +1095,13 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     logger.info("Initializing Transport Sustainability Agent")
     agent = TransportSustainabilityAgent()
 
-    # Process places data
-    logger.info("Processing places data...")
-    processed_data = agent.process_places_data(places_data)
-
-    # Identify location pairs
-    logger.info("Identifying location pairs...")
-    location_pairs = agent.identify_location_pairs(
-        processed_data["formatted_places"],
-        accommodation_location
-    )
-
-    # Calculate all routes
-    logger.info("Calculating routes and carbon emissions...")
-    route_results = agent.calculate_all_routes(location_pairs, concurrent=True)
+    # Calculate day-by-day routes based on itinerary
+    logger.info("Calculating day-by-day routes...")
+    transport_data = agent.calculate_day_by_day_routes(places_data, accommodation_location)
 
     # Format output
     logger.info("Formatting output...")
-    output = agent.format_output(route_results, processed_data["metadata"], places_data)
+    output = agent.format_output(transport_data, places_data)
 
     # Add timing info
     elapsed_time = time.time() - start_time
@@ -685,11 +1120,15 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     raw_output_file = output_file.replace(".json", "_raw_responses.json")
     dump_raw_responses(raw_output_file)
 
+    # Calculate total connections
+    total_connections = sum(len(day_data.get("connections", [])) for day_data in transport_data.values())
+
     # Print summary
     print(f"\n{'='*80}")
     print(f"TRANSPORT PROCESSING COMPLETE")
     print(f"{'='*80}")
-    print(f"Total location pairs processed: {len(route_results)}")
+    print(f"Days processed: {len(transport_data)}")
+    print(f"Total routes calculated: {total_connections}")
     print(f"Processing time: {elapsed_time:.2f}s")
     print(f"Output saved to: {output_file}")
     print(f"Raw Google Maps responses: {raw_output_file}")
