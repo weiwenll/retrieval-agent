@@ -213,7 +213,7 @@ def standardize_opening_hours(hours_str: str) -> str:
     # Join periods with comma
     return ','.join(standardized_periods)
 
-def search_places(location, radius=2000, included_types=None, excluded_types=None, language='en', max_results=20, min_rating=0.0):
+def search_places(location, radius=2000, included_types=None, excluded_types=None, language='en', max_results=20, min_rating=0.0, destination_city=None):
     """
     Search Google Places nearby using the new Places API (v1).
     Returns RAW API data without formatting.
@@ -226,16 +226,17 @@ def search_places(location, radius=2000, included_types=None, excluded_types=Non
         language: language code (default 'en')
         max_results: maximum results to fetch (default 20)
         min_rating: minimum rating filter (0.0-5.0)
+        destination_city: City name to filter results by (e.g., "Singapore")
 
     Returns:
         List of raw place dictionaries from Google Places API
 
     Examples:
         # Single type
-        search_places(location, included_types="restaurant", excluded_types=["bar", "pub"])
+        search_places(location, included_types="restaurant", excluded_types=["bar", "pub"], destination_city="Singapore")
 
         # Multiple types
-        search_places(location, included_types=["restaurant", "cafe"], excluded_types=["bar"])
+        search_places(location, included_types=["restaurant", "cafe"], excluded_types=["bar"], destination_city="Singapore")
     """
     api_key = os.getenv('GOOGLE_MAPS_API_KEY')
     if not api_key:
@@ -300,7 +301,7 @@ def search_places(location, radius=2000, included_types=None, excluded_types=Non
         places = data.get('places', [])
         print(f"Found {len(places)} places")
 
-        # Filter by rating and businessStatus
+        # Filter by rating, businessStatus, and destination city address
         filtered_results = []
         for place in places:
             business_status = place.get('businessStatus', 'OPERATIONAL')
@@ -311,6 +312,15 @@ def search_places(location, radius=2000, included_types=None, excluded_types=Non
             rating = place.get('rating', 0)
             if rating < min_rating:
                 continue
+
+            # Filter: address must contain destination city (if specified)
+            if destination_city:
+                address = place.get('formattedAddress', '').lower()
+                destination_lower = destination_city.lower()
+                if destination_lower not in address:
+                    place_name = place.get('displayName', {}).get('text', 'Unknown') if isinstance(place.get('displayName'), dict) else 'Unknown'
+                    print(f"Filtered non-{destination_city}: {place_name} ({place.get('formattedAddress', 'No address')})")
+                    continue
 
             filtered_results.append(place)
 
@@ -347,11 +357,11 @@ def geocode_location(location_name: str, country: str = "Singapore") -> Optional
         country: Country to search in (default: "Singapore")
 
     Returns:
-        Dict with 'lat' and 'lng' keys if successful, None if geocoding fails
+        Dict with 'lat', 'lng', 'place_id', and 'place_name' keys if successful, None if geocoding fails
 
     Example:
         result = geocode_location("Clarke Quay")
-        # Returns: {'lat': 1.2931, 'lng': 103.8467}
+        # Returns: {'lat': 1.2931, 'lng': 103.8467, 'place_id': 'ChIJ...', 'place_name': 'Clarke Quay'}
     """
     api_key = os.getenv('GOOGLE_MAPS_API_KEY')
     if not api_key:
@@ -392,6 +402,11 @@ def geocode_location(location_name: str, country: str = "Singapore") -> Optional
         location = place.get('location', {})
         display_name = place.get('displayName', {})
         formatted_address = place.get('formattedAddress', '')
+        place_id = place.get('id', '')
+
+        # Extract place_id (API v1 format: "places/{place_id}")
+        if place_id.startswith('places/'):
+            place_id = place_id.replace('places/', '')
 
         lat = location.get('latitude')
         lng = location.get('longitude')
@@ -399,8 +414,9 @@ def geocode_location(location_name: str, country: str = "Singapore") -> Optional
         if lat is not None and lng is not None:
             place_name = display_name.get('text', location_name) if isinstance(display_name, dict) else display_name
             print(f"[OK] Geocoded '{location_name}' to {place_name}: ({lat:.4f}, {lng:.4f})")
+            print(f"  Place ID: {place_id}")
             print(f"  Address: {formatted_address}")
-            return {'lat': lat, 'lng': lng}
+            return {'lat': lat, 'lng': lng, 'place_id': place_id, 'place_name': place_name}
 
         print(f"Location data incomplete for '{location_name}'")
         return None
@@ -413,6 +429,119 @@ def geocode_location(location_name: str, country: str = "Singapore") -> Optional
         logger.exception(f"Unexpected geocoding error: {e}")
         print(f"[ERROR] Unexpected error geocoding '{location_name}': {e}")
         return None
+
+
+def reverse_geocode(lat: float, lng: float) -> Optional[Dict]:
+    """
+    Reverse geocode coordinates to get place details using Google Places API v1.
+    Prioritizes accommodation types (hotel, lodging, resort) over other place types.
+
+    Args:
+        lat: Latitude
+        lng: Longitude
+
+    Returns:
+        Dict with 'place_id' and 'name' keys if successful, None if reverse geocoding fails
+
+    Example:
+        result = reverse_geocode(1.2931, 103.8467)
+        # Returns: {'place_id': 'ChIJ...', 'name': 'Marina Bay Sands'}
+    """
+    api_key = os.getenv('GOOGLE_MAPS_API_KEY')
+    if not api_key:
+        raise ValueError("GOOGLE_MAPS_API_KEY not set in environment")
+
+    # Priority order: try accommodation types first, then expand to general places
+    search_strategies = [
+        {
+            'types': ['hotel', 'lodging', 'resort_hotel'],
+            'radius': 100.0,
+            'description': 'accommodation within 100m'
+        },
+        {
+            'types': ['hotel', 'lodging', 'resort_hotel'],
+            'radius': 500.0,
+            'description': 'accommodation within 500m'
+        },
+        {
+            'types': ['shopping_mall'],
+            'radius': 200.0,
+            'description': 'shopping mall within 200m'
+        },
+        {
+            'types': None,  # No type filter - find any nearby place
+            'radius': 50.0,
+            'description': 'any place within 50m'
+        }
+    ]
+
+    url = "https://places.googleapis.com/v1/places:searchNearby"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.types"
+    }
+
+    print(f"Reverse geocoding coordinates: ({lat:.4f}, {lng:.4f})...")
+
+    for strategy in search_strategies:
+        body = {
+            "locationRestriction": {
+                "circle": {
+                    "center": {
+                        "latitude": lat,
+                        "longitude": lng
+                    },
+                    "radius": strategy['radius']
+                }
+            },
+            "maxResultCount": 5,  # Get top 5 to filter
+            "rankPreference": "DISTANCE"
+        }
+
+        # Add type filter if specified
+        if strategy['types']:
+            body["includedTypes"] = strategy['types']
+
+        try:
+            response = requests.post(url, headers=headers, json=body, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            places = data.get('places', [])
+            if not places:
+                print(f"  No {strategy['description']} found, trying next strategy...")
+                continue
+
+            # Extract details from first result
+            place = places[0]
+            display_name = place.get('displayName', {})
+            place_id = place.get('id', '')
+            place_types = place.get('types', [])
+
+            # Extract place_id (API v1 format: "places/{place_id}")
+            if place_id.startswith('places/'):
+                place_id = place_id.replace('places/', '')
+
+            place_name = display_name.get('text', '') if isinstance(display_name, dict) else display_name
+
+            if place_id and place_name:
+                place_type_str = ', '.join(place_types[:3]) if place_types else 'unknown type'
+                print(f"[OK] Reverse geocoded to: {place_name} ({place_type_str})")
+                print(f"  Place ID: {place_id}")
+                return {'place_id': place_id, 'name': place_name}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Reverse geocoding error for ({lat:.4f}, {lng:.4f}): {e}")
+            print(f"[ERROR] Reverse geocoding failed: {e}")
+            continue
+        except Exception as e:
+            logger.exception(f"Unexpected reverse geocoding error: {e}")
+            print(f"[ERROR] Unexpected error during reverse geocoding: {e}")
+            continue
+
+    print(f"No place found at coordinates ({lat:.4f}, {lng:.4f})")
+    return None
 
 
 def analyze_interests_with_llm(interests: List[str], openai_client) -> List[Dict]:

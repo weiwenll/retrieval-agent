@@ -104,7 +104,7 @@ except FileNotFoundError:
 from tools import (
     search_places, get_place_details, remove_unicode, standardize_opening_hours, generate_tags,
     get_exclusions_for_uninterest, convert_dietary_to_exclusions, generate_place_description,
-    geocode_location, analyze_interests_with_llm
+    geocode_location, reverse_geocode, analyze_interests_with_llm
 )
 from config import INTEREST_MAPPINGS, SPECIAL_INTEREST_CATEGORIES
 from tool_clustering import calculate_geo_cluster
@@ -541,7 +541,7 @@ class PlacesResearchAgent:
             return True
         return False
 
-    def search_with_requirements(self, location, included_types, min_rating, max_results_needed, search_type='attraction', excluded_types=None):
+    def search_with_requirements(self, location, included_types, min_rating, max_results_needed, search_type='attraction', excluded_types=None, destination_city=None):
         """
         Progressive search: Expand radius FIRST, then relax rating ONLY if needed
 
@@ -561,6 +561,7 @@ class PlacesResearchAgent:
             max_results_needed: Target number of results
             search_type: 'attraction' or 'food' (determines rating floor)
             excluded_types: Place types to exclude (optional)
+            destination_city: City name to filter results by (e.g., "Singapore")
 
         Returns:
             List of places (up to max_results_needed)
@@ -611,7 +612,8 @@ class PlacesResearchAgent:
                 excluded_types=excluded_types,
                 radius=radius,
                 max_results=max_results,
-                min_rating=current_min_rating
+                min_rating=current_min_rating,
+                destination_city=destination_city
             )
 
             # Deduplicate by place_id (API v1 uses 'id' field)
@@ -1758,6 +1760,7 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
 
     # Extract parameters from requirements section
     requirements_data = input_data.get('requirements', {})
+    destination_city = requirements_data.get('destination_city', 'Singapore')
     pace = requirements_data.get('pace', 'moderate')
     duration_days = requirements_data.get('duration_days', 1)
     location = requirements_data.get('optional', {}).get('accommodation_location', {})
@@ -1774,11 +1777,14 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
         neighbourhood = location.get('neighbourhood') or location.get('neighborhood')
         if neighbourhood:
             print(f"\n=== Geocoding neighbourhood '{neighbourhood}' (lat/lng not provided) ===")
-            geocoded = geocode_location(neighbourhood, country="Singapore")
+            geocoded = geocode_location(neighbourhood, country=destination_city)
             if geocoded:
                 location['lat'] = geocoded['lat']
                 location['lng'] = geocoded['lng']
-                print(f"[OK] Using geocoded coordinates: ({location['lat']:.4f}, {location['lng']:.4f})\n")
+                location['place_id'] = geocoded.get('place_id')
+                location['name'] = geocoded.get('place_name')
+                print(f"[OK] Using geocoded coordinates: ({location['lat']:.4f}, {location['lng']:.4f})")
+                print(f"[OK] Added place_id: {location.get('place_id')}, name: {location.get('name')}\n")
             else:
                 print(f"[ERROR] Failed to geocode '{neighbourhood}'. Please provide lat/lng manually.")
                 return {"error": f"Could not geocode neighbourhood '{neighbourhood}'"}
@@ -1789,6 +1795,20 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     # Handle both 'lon' and 'lng' formats
     if location and 'lon' in location and 'lng' not in location:
         location['lng'] = location['lon']
+
+    # If lat/lng are present but place_id/name are missing, reverse geocode to get them
+    if location and location.get('lat') is not None and location.get('lng') is not None:
+        if not location.get('place_id') or not location.get('name'):
+            print(f"\n=== Reverse geocoding to get place details for coordinates ({location['lat']:.4f}, {location['lng']:.4f}) ===")
+            reverse_geocoded = reverse_geocode(location['lat'], location['lng'])
+            if reverse_geocoded:
+                if not location.get('place_id'):
+                    location['place_id'] = reverse_geocoded.get('place_id')
+                if not location.get('name'):
+                    location['name'] = reverse_geocoded.get('name')
+                print(f"[OK] Added place_id: {location.get('place_id')}, name: {location.get('name')}\n")
+            else:
+                print(f"[WARNING] Could not reverse geocode coordinates, place_id and name will remain empty\n")
 
     # Calculate requirements
     requirements = agent.calculate_required_places(pace, duration_days)
@@ -1806,28 +1826,31 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
             else:
                 category_based_interests.append(item)
 
-    # Map category-based interests to place types
-    category_interest_strings = [item.get('original', '') for item in category_based_interests]
-    mapped_interests = agent.map_interests(category_interest_strings) if category_interest_strings else []
-
-    # If no interests at all, use default
-    if not mapped_interests and not location_based_interests:
-        mapped_interests = ['tourist_attraction']
-
-    # Convert uninterests and dietary restrictions to exclusions FIRST
+    # Convert uninterests and dietary restrictions to exclusions FIRST (before mapping interests)
     excluded_types_from_uninterests = []
     if user_uninterests:
         for uninterest in user_uninterests:
             excluded_types_from_uninterests.extend(get_exclusions_for_uninterest(uninterest))
         excluded_types_from_uninterests = list(set(excluded_types_from_uninterests))
 
+    # Map category-based interests to place types
+    category_interest_strings = [item.get('original', '') for item in category_based_interests]
+    mapped_interests = agent.map_interests(category_interest_strings) if category_interest_strings else []
+
+    # Filter out any mapped interests that are in excluded types
+    mapped_interests = [interest for interest in mapped_interests if interest not in excluded_types_from_uninterests]
+
+    # If no interests at all, use default
+    if not mapped_interests and not location_based_interests:
+        mapped_interests = ['tourist_attraction']
+
     # Core attraction types - priority order
     core_types_priority = [
-        'tourist_attraction', 'amusement_park', 'museum', 'zoo', 'aquarium', 'park', 'art_gallery'
+        'tourist_attraction', 'amusement_park', 'museum', 'zoo', 'aquarium', 'park', 'art_gallery', 'shopping_mall'
     ]
 
     core_types_secondary = [
-        'point_of_interest', 'church', 'hindu_temple', 'mosque', 'synagogue'
+        'point_of_interest', 'church', 'hindu_temple', 'mosque', 'synagogue', 'department_store'
     ]
 
     # User's interests ALWAYS come first (highest priority)
@@ -1871,7 +1894,7 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
             print(f"\nSearching near '{location_query}' (from interest: '{original}')")
 
             # Geocode the location
-            coords = geocode_location(location_query, country="Singapore")
+            coords = geocode_location(location_query, country=destination_city)
             if not coords:
                 print(f"  [ERROR] Could not find location '{location_query}', skipping...")
                 continue
@@ -1892,7 +1915,8 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
                 search_location, search_types, 4.0,
                 remaining_needed,
                 search_type='attraction',
-                excluded_types=attraction_excluded_types
+                excluded_types=attraction_excluded_types,
+                destination_city=destination_city
             )
 
             # Deduplicate with existing results
@@ -1924,7 +1948,8 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
             location, search_types, min_rating,
             remaining_needed,
             search_type='attraction',
-            excluded_types=attraction_excluded_types
+            excluded_types=attraction_excluded_types,
+            destination_city=destination_city
         )
 
         # Deduplicate with existing results
@@ -1948,7 +1973,8 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
                     location, remaining_types, 4.0,
                     requirements['attractions_needed'] - len(attraction_results),
                     search_type='attraction',
-                    excluded_types=attraction_excluded_types
+                    excluded_types=attraction_excluded_types,
+                    destination_city=destination_city
                 )
 
                 # Deduplicate with existing results
@@ -1982,7 +2008,8 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
             location, food_term, min_food_rating,
             requirements['food_places_needed'] - len(food_results),
             search_type='food',
-            excluded_types=food_excluded_types
+            excluded_types=food_excluded_types,
+            destination_city=destination_city
         )
         food_results.extend(results)
         print(f"Total food places so far: {len(food_results)}/{requirements['food_places_needed']}\n")
@@ -2026,8 +2053,17 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     with open(output_file, 'w') as f:
         json.dump(result, f, indent=2)
 
-    print(f"\nSummary: Found {len(attraction_results)} attractions + {len(food_results)} food = {len(formatted_places)} total places")
-    print(f"Time elapsed: {elapsed:.2f}s")
+    # Print formatted summary
+    print(f"\n{'='*80}")
+    print(f"RESEARCH PROCESSING COMPLETE")
+    print(f"{'='*80}")
+    print(f"Attractions found: {len(attraction_results)}")
+    print(f"Food places found: {len(food_results)}")
+    print(f"Total places found: {len(formatted_places)}")
+    print(f"Processing time: {elapsed:.2f}s")
+    print(f"Output saved to: {output_file}")
+    print(f"{'='*80}\n")
+
     logger.info(f"Found {len(formatted_places)} places, saved to {output_file}")
     return result
 
