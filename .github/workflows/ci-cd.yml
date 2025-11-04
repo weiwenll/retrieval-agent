@@ -430,36 +430,86 @@ jobs:
         run: |
           echo "## API Gateway Deployment Verification" >> $GITHUB_STEP_SUMMARY
 
-          # Get API Gateway ID
+          # Wait a moment for API Gateway to stabilize after SAM deploy
+          sleep 3
+
+          # Get API Gateway ID from CloudFormation outputs
           API_ID=$(aws cloudformation describe-stacks \
             --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
             --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
             --output text | grep -oP 'https://\K[^.]+')
 
+          if [ -z "$API_ID" ]; then
+            echo "[ERROR] Could not extract API Gateway ID" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "API Gateway ID: \`$API_ID\`" >> $GITHUB_STEP_SUMMARY
           echo "API Gateway ID: $API_ID"
 
-          # Get latest deployment
-          LATEST_DEPLOYMENT=$(aws apigateway get-deployments \
+          # Get the latest deployment ID (created by SAM)
+          LATEST_DEPLOYMENT_ID=$(aws apigateway get-deployments \
             --rest-api-id $API_ID \
             --region ${{ env.AWS_REGION }} \
-            --query 'items[0].[id,createdDate,description]' \
+            --query 'items[0].id' \
             --output text)
 
-          echo "Latest API Gateway Deployment:" >> $GITHUB_STEP_SUMMARY
-          echo "$LATEST_DEPLOYMENT" >> $GITHUB_STEP_SUMMARY
+          LATEST_DEPLOYMENT_DATE=$(aws apigateway get-deployments \
+            --rest-api-id $API_ID \
+            --region ${{ env.AWS_REGION }} \
+            --query 'items[0].createdDate' \
+            --output text)
 
-          # Get stage information
+          LATEST_DEPLOYMENT_DESC=$(aws apigateway get-deployments \
+            --rest-api-id $API_ID \
+            --region ${{ env.AWS_REGION }} \
+            --query 'items[0].description' \
+            --output text)
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Latest API Gateway Deployment (Created by SAM)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment ID**: \`$LATEST_DEPLOYMENT_ID\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Created Date**: \`$LATEST_DEPLOYMENT_DATE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Description**: \`$LATEST_DEPLOYMENT_DESC\`" >> $GITHUB_STEP_SUMMARY
+
+          # Get stage information (prod stage) - what's actually active
           STAGE_INFO=$(aws apigateway get-stage \
             --rest-api-id $API_ID \
             --stage-name prod \
             --region ${{ env.AWS_REGION }} \
-            --query '[stageName,deploymentId,lastUpdatedDate]' \
-            --output text)
+            --output json)
 
-          echo "API Gateway Stage Info:" >> $GITHUB_STEP_SUMMARY
-          echo "$STAGE_INFO" >> $GITHUB_STEP_SUMMARY
-          echo "[OK] API Gateway redeployed successfully" >> $GITHUB_STEP_SUMMARY
+          ACTIVE_DEPLOYMENT_ID=$(echo "$STAGE_INFO" | jq -r '.deploymentId')
+          STAGE_UPDATED=$(echo "$STAGE_INFO" | jq -r '.lastUpdatedDate')
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Active API Gateway Deployment (Used by prod stage)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Active Deployment ID**: \`$ACTIVE_DEPLOYMENT_ID\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stage Last Updated**: \`$STAGE_UPDATED\`" >> $GITHUB_STEP_SUMMARY
+
+          # Verify active deployment matches latest deployment (they should be the same if successful)
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$ACTIVE_DEPLOYMENT_ID" = "$LATEST_DEPLOYMENT_ID" ]; then
+            echo "[OK] API Gateway redeployed successfully!" >> $GITHUB_STEP_SUMMARY
+            echo "[OK] Active deployment matches latest deployment: \`$ACTIVE_DEPLOYMENT_ID\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[ERROR] Active deployment (\`$ACTIVE_DEPLOYMENT_ID\`) does not match latest deployment (\`$LATEST_DEPLOYMENT_ID\`)" >> $GITHUB_STEP_SUMMARY
+            echo "[ERROR] API Gateway was NOT redeployed properly" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Show recent deployment history for reference
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Recent Deployment History" >> $GITHUB_STEP_SUMMARY
+          DEPLOYMENTS=$(aws apigateway get-deployments \
+            --rest-api-id $API_ID \
+            --region ${{ env.AWS_REGION }} \
+            --query 'items[0:3].[id,createdDate,description]' \
+            --output text)
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "$DEPLOYMENTS" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Get Stack Outputs
         run: |
