@@ -51,6 +51,11 @@ Parameters:
     Type: String
     Description: Docker image tag to deploy (must be git commit SHA, e.g. abc1234)
 
+  DeploymentTimestamp:
+    Type: String
+    Default: "1970-01-01T00:00:00Z"
+    Description: Timestamp to force API Gateway redeployment (format YYYY-MM-DDTHH:MM:SSZ)
+
 Resources:
   # S3 Bucket for logs and audit data (General Purpose)
   DataBucket:
@@ -138,6 +143,7 @@ Resources:
     Properties:
       Name: !Sub 'retrieval-agent-api-${Environment}'
       StageName: !Ref Environment
+      Description: !Sub 'Deployed at ${DeploymentTimestamp}'  # Force redeployment on timestamp change
       Cors:
         AllowMethods: "'POST, OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"

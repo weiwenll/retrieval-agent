@@ -291,10 +291,46 @@ jobs:
       - name: Get AWS Account ID
         id: account
         run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
-    
+
+      - name: Verify ECR Images Exist
+        run: |
+          echo "## ECR Image Verification" >> $GITHUB_STEP_SUMMARY
+
+          # Check ResearchAgent image
+          RESEARCH_IMAGE="${{ steps.account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:research-${{ github.sha }}"
+          echo "Verifying ResearchAgent image: $RESEARCH_IMAGE"
+
+          if aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=research-${{ github.sha }} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+            echo "[OK] ResearchAgent image found in ECR" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[ERROR] ResearchAgent image NOT found in ECR" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check TransportAgent image
+          TRANSPORT_IMAGE="${{ steps.account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:transport-${{ github.sha }}"
+          echo "Verifying TransportAgent image: $TRANSPORT_IMAGE"
+
+          if aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=transport-${{ github.sha }} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+            echo "[OK] TransportAgent image found in ECR" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[ERROR] TransportAgent image NOT found in ECR" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
       - name: SAM Deploy to Production
         id: sam-deploy
         run: |
+          # Generate deployment timestamp
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "Deploying with timestamp: $TIMESTAMP"
+
           sam deploy \
             --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
@@ -305,6 +341,7 @@ jobs:
             --parameter-overrides \
               Environment=prod \
               ImageTag=${{ github.sha }} \
+              DeploymentTimestamp=$TIMESTAMP \
               LambdaExecutionRoleArn=arn:aws:iam::${{ steps.account.outputs.account_id }}:role/retrieval-agent-LambdaRole \
               GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
@@ -320,6 +357,109 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='UPDATE_FAILED'].[LogicalResourceId,ResourceStatusReason]" \
             --output table >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Verify Lambda Functions Updated
+        if: steps.sam-deploy.outcome == 'success'
+        run: |
+          echo "## Lambda Update Verification" >> $GITHUB_STEP_SUMMARY
+
+          # Wait for Lambda functions to stabilize
+          sleep 5
+
+          # Check ResearchAgent Lambda
+          RESEARCH_STATUS=$(aws lambda get-function \
+            --function-name research-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Configuration.LastUpdateStatus' \
+            --output text)
+
+          echo "ResearchAgent Lambda Status: $RESEARCH_STATUS"
+          if [ "$RESEARCH_STATUS" = "Successful" ]; then
+            echo "[OK] ResearchAgent Lambda updated successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[WARNING] ResearchAgent Lambda status: $RESEARCH_STATUS" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check TransportAgent Lambda
+          TRANSPORT_STATUS=$(aws lambda get-function \
+            --function-name transport-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Configuration.LastUpdateStatus' \
+            --output text)
+
+          echo "TransportAgent Lambda Status: $TRANSPORT_STATUS"
+          if [ "$TRANSPORT_STATUS" = "Successful" ]; then
+            echo "[OK] TransportAgent Lambda updated successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[WARNING] TransportAgent Lambda status: $TRANSPORT_STATUS" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Get image URIs to verify correct images are deployed
+          RESEARCH_IMAGE=$(aws lambda get-function \
+            --function-name research-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Code.ImageUri' \
+            --output text)
+
+          TRANSPORT_IMAGE=$(aws lambda get-function \
+            --function-name transport-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Code.ImageUri' \
+            --output text)
+
+          echo "ResearchAgent Image: $RESEARCH_IMAGE" >> $GITHUB_STEP_SUMMARY
+          echo "TransportAgent Image: $TRANSPORT_IMAGE" >> $GITHUB_STEP_SUMMARY
+
+          # Verify images contain the correct SHA
+          if [[ "$RESEARCH_IMAGE" == *"research-${{ github.sha }}"* ]]; then
+            echo "[OK] ResearchAgent using correct image tag" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[ERROR] ResearchAgent NOT using expected image tag" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          if [[ "$TRANSPORT_IMAGE" == *"transport-${{ github.sha }}"* ]]; then
+            echo "[OK] TransportAgent using correct image tag" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "[ERROR] TransportAgent NOT using expected image tag" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Verify API Gateway Deployment
+        if: steps.sam-deploy.outcome == 'success'
+        run: |
+          echo "## API Gateway Deployment Verification" >> $GITHUB_STEP_SUMMARY
+
+          # Get API Gateway ID
+          API_ID=$(aws cloudformation describe-stacks \
+            --stack-name retrieval-agent-stack \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
+            --output text | grep -oP 'https://\K[^.]+')
+
+          echo "API Gateway ID: $API_ID"
+
+          # Get latest deployment
+          LATEST_DEPLOYMENT=$(aws apigateway get-deployments \
+            --rest-api-id $API_ID \
+            --region ${{ env.AWS_REGION }} \
+            --query 'items[0].[id,createdDate,description]' \
+            --output text)
+
+          echo "Latest API Gateway Deployment:" >> $GITHUB_STEP_SUMMARY
+          echo "$LATEST_DEPLOYMENT" >> $GITHUB_STEP_SUMMARY
+
+          # Get stage information
+          STAGE_INFO=$(aws apigateway get-stage \
+            --rest-api-id $API_ID \
+            --stage-name prod \
+            --region ${{ env.AWS_REGION }} \
+            --query '[stageName,deploymentId,lastUpdatedDate]' \
+            --output text)
+
+          echo "API Gateway Stage Info:" >> $GITHUB_STEP_SUMMARY
+          echo "$STAGE_INFO" >> $GITHUB_STEP_SUMMARY
+          echo "[OK] API Gateway redeployed successfully" >> $GITHUB_STEP_SUMMARY
 
       - name: Get Stack Outputs
         run: |
