@@ -738,6 +738,17 @@ PLACE_CARBON_FACTORS = {
         "low_carbon_score": 32.0,
         "notes": "Room heating for hot yoga, basic HVAC"
     },
+    # LODGING
+    "hotel": {
+        "co2e_kg": 12.0,
+        "low_carbon_score": 80.0,
+        "notes": "Per night stay: 24/7 HVAC, laundry, pools, restaurants"
+    },
+    "resort_hotel": {
+        "co2e_kg": 18.0,
+        "low_carbon_score": 85.0,
+        "notes": "Per night: Luxury facilities, multiple pools, spas, casinos"
+    },
     # NATURAL FEATURES
     "beach": {
         "co2e_kg": 0.0,

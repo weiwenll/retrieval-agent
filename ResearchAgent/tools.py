@@ -322,6 +322,18 @@ def search_places(location, radius=2000, included_types=None, excluded_types=Non
                     print(f"Filtered non-{destination_city}: {place_name} ({place.get('formattedAddress', 'No address')})")
                     continue
 
+            # Filter: Remove hotels that are NOT tourist attractions
+            # If types contains "hotel" but NOT "tourist_attraction", skip this place
+            place_types = place.get('types', [])
+            if place_types:
+                has_hotel = 'hotel' in place_types
+                has_tourist_attraction = 'tourist_attraction' in place_types
+
+                if has_hotel and not has_tourist_attraction:
+                    place_name = place.get('displayName', {}).get('text', 'Unknown') if isinstance(place.get('displayName'), dict) else 'Unknown'
+                    print(f"Filtered non-tourist hotel: {place_name} (types: {place_types})")
+                    continue
+
             filtered_results.append(place)
 
         print(f"Returning {len(filtered_results)} places after filtering")
