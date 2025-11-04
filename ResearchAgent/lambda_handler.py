@@ -357,6 +357,22 @@ def lambda_handler(event, context):
                     completed_at=datetime.utcnow().isoformat(),
                     duration_ms=round(total_duration * 1000, 2)
                 )
+                
+                return {
+                    'statusCode': 202,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({
+                        'status': 'accepted',
+                        'session_id': session_id,
+                        'message': 'Request accepted for async processing',
+                        'status_location': f"s3://{bucket_name}/{STATUS_PREFIX}{session_id}.json",
+                        'check_status_endpoint': '/status',
+                        'expected_duration_seconds': '60-90'
+                    })
+                }
 
             # Structured logging: Request completed successfully
             log_structured('INFO', 'Request completed successfully',

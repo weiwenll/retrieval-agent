@@ -111,14 +111,9 @@ class TransportSustainabilityAgent:
         # Known actions mapping (import functions from other modules)
         from tools import (
             get_transport_options_concurrent,
-            batch_process_routes,
-            carbon_estimate
+            batch_process_routes
         )
-        # from carbon_calculator import (
-        #     add_carbon_to_transport_options,
-        #     batch_calculate_carbon,
-        #     compare_carbon_emissions
-        # )
+        from singapore_transport_carbon_score import carbon_estimate
 
         self.known_actions = {
             "get_transport_options": get_transport_options_concurrent,
@@ -237,18 +232,24 @@ class TransportSustainabilityAgent:
 
             TRANSPORT MODE EVALUATION:
             For each location pair, retrieve and evaluate ALL transport modes:
-            - Walking
-            - Public Transit (MRT/Bus) 
-            - Taxi/Ride-hailing
-            - Driving (if applicable)
+            - Walk
+            - Cycle (automatically created for walking routes >2km or >20min)
+            - Public Transit (MRT/Bus)
+            - Ride (Grab/Private Hire/Taxi)
 
             TRANSPORT FILTERING RULES:
             Apply intelligent filtering based on practicality thresholds:
 
-            Walking:
-            - Exclude if distance > 2.0 km
-            - Exclude if duration > 25 minutes
+            Walk:
+            - API queries capped at 10km max distance and 240 minutes max duration
+            - Routes >2km automatically removed from output (converted to cycle)
+            - Only show walk if distance <=2km
             - Consider weather/climate factors if available
+
+            Cycle:
+            - Maximum distance: 8km (whether from API or converted from walking)
+            - Maximum duration: 45 minutes
+            - Automatically created from walking routes >2km or >20min
 
             Public Transit (MRT/Bus):
             - Exclude if requires > 3 transfers
@@ -256,7 +257,7 @@ class TransportSustainabilityAgent:
             - Exclude if walking portion > 1.5 km
             - Flag if service hours limited (early morning/late night)
 
-            Taxi/Ride-hailing:
+            Ride (Grab/Private Hire/Taxi):
             - Always include as fallback option
             - Flag if cost > 30 SGD as "expensive"
             - Consider surge pricing times if data available
@@ -278,7 +279,7 @@ class TransportSustainabilityAgent:
                 "type": "function",
                 "function": {
                     "name": "get_transport_options",
-                    "description": "Get transport options (walking, public transport, taxi, bicycle) between two locations with distance, duration, and cost",
+                    "description": "Get transport options (walk, cycle, public transport, ride) between two locations with distance, duration, and cost. Walking routes >2km are removed from output and converted to cycle option.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -641,16 +642,16 @@ class TransportSustainabilityAgent:
         Returns:
             List of formatted transport mode entries
         """
-        from tools import carbon_estimate
+        from singapore_transport_carbon_score import carbon_estimate
 
         transport_modes = []
         for mode, mode_data in transport_options.items():
-            # Map API mode names to user-friendly names
+            # Map API mode names to user-friendly names (standardized terminology)
             mode_map = {
                 "WALK": "walk",
                 "TRANSIT": "transit",
-                "DRIVE": "drive",
-                "CYCLING": "cycle"
+                "DRIVE": "ride",  # Changed from "drive" to "ride"
+                "CYCLE": "cycle"
             }
             friendly_mode = mode_map.get(mode, mode.lower())
 
@@ -677,8 +678,12 @@ class TransportSustainabilityAgent:
             # Calculate carbon emissions using carbon_estimate
             carbon_kg = carbon_estimate(friendly_mode, distance_km)
 
-            # Create route summary
-            route_summary = f"{distance_km} km, {duration_minutes:.0f} mins via {friendly_mode}"
+            # Create route summary with appropriate display text
+            if friendly_mode == "ride":
+                route_summary_text = "Grab/Private Hire/Taxi"
+            else:
+                route_summary_text = friendly_mode
+            route_summary = f"{distance_km} km, {duration_minutes:.0f} mins via {route_summary_text}"
 
             transport_mode_entry = {
                 "mode": friendly_mode,

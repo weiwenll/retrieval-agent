@@ -20,17 +20,20 @@ GOOGLE_ROUTES_API_VERSION = "v2"
 
 # Transport Mode Mappings for Google Routes API
 GOOGLE_TRAVEL_MODES = {
-    "DRIVE": "car",
+    "DRIVE": "ride",  # Ride-hailing (Grab/Private Hire/Taxi)
     "TRANSIT": "public_transport",
-    "WALK": "walking"
+    "WALK": "walk"
 }
 
 # Transport Filtering Thresholds
 TRANSPORT_THRESHOLDS = {
-    "walking": {
-        "max_distance_km": 20.0,  # Very permissive - we'll convert >2km to cycling
-        "max_duration_minutes": 240,  # 4 hours max
-        "description": "Walking distance threshold (>2km becomes cycling)"
+    "walk": {
+        "api_max_distance_km": 10.0,  # Cap API queries at 10km max
+        "api_max_duration_minutes": 240,  # Cap API queries at 240 minutes (4 hours)
+        "convert_to_cycle_distance_km": 2.0,  # Convert to cycle if >2km
+        "convert_to_cycle_duration_minutes": 20,  # Convert to cycle if >20 minutes
+        "offer_both_threshold_km": 5.0,  # Offer both walk and cycle if distance <=5km
+        "description": "Walking distance thresholds with cycling conversion logic"
     },
     "public_transport": {
         "max_transfers": 3,
@@ -38,12 +41,12 @@ TRANSPORT_THRESHOLDS = {
         "max_walking_portion_km": 1.5,
         "description": "Public transport practicality thresholds"
     },
-    "taxi": {
+    "ride": {
         "expensive_threshold_sgd": 30,
-        "description": "Taxi cost threshold for flagging expensive trips"
+        "description": "Ride-hailing (Grab/taxi) cost threshold for flagging expensive trips"
     },
-    "bicycle": {
-        "max_distance_km": 10.0,
+    "cycle": {
+        "max_distance_km": 8.0,  # Cap at 8km whether from API or converted from walking
         "max_duration_minutes": 45,
         "description": "Cycling distance threshold"
     }
@@ -95,8 +98,8 @@ def get_transport_threshold(mode: str, threshold_type: str) -> Any:
     Get specific threshold value for a transport mode.
 
     Args:
-        mode: Transport mode (walking, public_transport, taxi, bicycle)
-        threshold_type: Type of threshold (max_distance_km, max_duration_minutes, etc.)
+        mode: Transport mode (walk, public_transport, ride, cycle)
+        threshold_type: Type of threshold (api_max_distance_km, max_duration_minutes, etc.)
 
     Returns:
         Threshold value or None if not found

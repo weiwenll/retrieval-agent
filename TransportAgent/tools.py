@@ -18,8 +18,7 @@ from config import (
     GOOGLE_ROUTES_API_URL,
     CONCURRENT_CONFIG,
     TRANSPORT_THRESHOLDS,
-    estimate_taxi_cost,
-    EMISSION_FACTORS
+    estimate_taxi_cost
 )
 
 logger = logging.getLogger(__name__)
@@ -274,12 +273,13 @@ def parse_route_data(route: Dict[str, Any], travel_mode: str) -> Dict[str, Any]:
 
 def convert_walking_to_cycling(walking_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Convert walking route to cycling estimate for distances > 2km.
+    Convert walking route to cycling estimate.
 
     Cycling assumptions:
     - Average speed: 15 km/h (leisurely pace)
     - Duration = distance / speed
     - No cost
+    - Max distance capped at 8km (enforced by caller)
 
     Args:
         walking_data: Walking route data
@@ -295,7 +295,7 @@ def convert_walking_to_cycling(walking_data: Dict[str, Any]) -> Dict[str, Any]:
     duration_minutes = duration_hours * 60
 
     return {
-        "travel_mode": "CYCLING",
+        "travel_mode": "CYCLE",
         "distance_km": distance_km,
         "distance_meters": walking_data.get("distance_meters", 0),
         "duration_minutes": round(duration_minutes, 1),
@@ -353,20 +353,44 @@ def get_transport_options_concurrent(
                 mode = futures[future]
                 logger.error(f"Error fetching route for {mode}: {e}")
 
-    # Process walking results: convert >2km to cycling, keep <=5km as walking
+    # Process walking results with new logic:
+    # 1. Cap walking at 10km (API level should already do this, but enforce here)
+    # 2. If >2km: convert to cycling and REMOVE walk from output
+    # 3. If <=2km: keep walk only
+    # 4. Cap cycling at 8km max
     if "WALK" in results:
         walking_data = results["WALK"]
         distance_km = walking_data.get("distance_km", 0)
+        duration_minutes = walking_data.get("duration_minutes", 0)
 
-        if distance_km > 2.0:
-            # Create cycling option
-            cycling_data = convert_walking_to_cycling(walking_data)
-            results["CYCLING"] = cycling_data
-            logger.info(f"Created cycling option for {distance_km}km route")
+        walk_thresholds = TRANSPORT_THRESHOLDS["walk"]
+        cycle_thresholds = TRANSPORT_THRESHOLDS["cycle"]
 
-            # Only keep walking if <=5km
-            if distance_km > 5.0:
-                logger.info(f"Removing walking option ({distance_km}km > 5km threshold)")
+        # Enforce 10km walking cap
+        if distance_km > walk_thresholds["api_max_distance_km"]:
+            logger.info(f"Removing walking option ({distance_km}km > {walk_thresholds['api_max_distance_km']}km max)")
+            del results["WALK"]
+            return results
+
+        # Check if we should create cycling option (>2km or >20min)
+        should_convert_to_cycle = (
+            distance_km > walk_thresholds["convert_to_cycle_distance_km"] or
+            duration_minutes > walk_thresholds["convert_to_cycle_duration_minutes"]
+        )
+
+        if should_convert_to_cycle:
+            # Only create cycling option if within 8km cycle cap
+            if distance_km <= cycle_thresholds["max_distance_km"]:
+                cycling_data = convert_walking_to_cycling(walking_data)
+                results["CYCLE"] = cycling_data
+                logger.info(f"Created cycling option for {distance_km}km / {duration_minutes}min route")
+
+                # ALWAYS remove walk from output when >2km (converted to cycle)
+                logger.info(f"Removing walking option ({distance_km}km > {walk_thresholds['convert_to_cycle_distance_km']}km)")
+                del results["WALK"]
+            else:
+                # Distance exceeds cycling cap, remove walking (no viable active transport)
+                logger.info(f"Distance {distance_km}km exceeds cycling max {cycle_thresholds['max_distance_km']}km, removing walk option")
                 del results["WALK"]
 
     return results
@@ -451,21 +475,6 @@ def clear_raw_responses():
     """Clear stored raw responses (call at start of new run)"""
     global _raw_responses
     _raw_responses = []
-
-
-def carbon_estimate(mode: str, distance_km: float) -> float:
-    """
-    Estimate carbon emissions for a given transport mode and distance.
-
-    Args:
-        mode: Transport mode (taxi, bus, mrt, cycle, walking, driving)
-        distance_km: Distance traveled in kilometers
-
-    Returns:
-        Carbon emissions in kg CO2
-    """
-    return EMISSION_FACTORS.get(mode, 0.05) * distance_km
-
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
