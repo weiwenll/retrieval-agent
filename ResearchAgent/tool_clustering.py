@@ -1,17 +1,10 @@
+import math
+from config import SINGAPORE_GEOCLUSTERS_BOUNDARIES
+
 def calculate_geo_cluster(lat: float, lng: float) -> str:
     """
-    Calculate Singapore geo cluster based purely on geographic regions.
-    
-    Singapore regions based on actual geographic boundaries:
-    - Central: Downtown Core, Marina Bay, Orchard
-    - North: Woodlands, Sembawang, Yishun  
-    - South: Sentosa, HarbourFront, Telok Blangah
-    - East: Changi, Pasir Ris, Tampines
-    - West: Jurong, Tuas, Pioneer
-    - North-East: Punggol, Sengkang, Hougang
-    - North-West: Bukit Panjang, Choa Chu Kang, Kranji
-    - South-East: Marine Parade, East Coast, Katong
-    - South-West: Queenstown, Buona Vista, Clementi
+    Calculate Singapore geo cluster based on defined boundaries.
+    If point doesn't fall within any boundary, find the closest cluster.
     """
     if not lat or not lng:
         return "unknown"
@@ -20,234 +13,125 @@ def calculate_geo_cluster(lat: float, lng: float) -> str:
     if not (1.1 <= lat <= 1.5 and 103.6 <= lng <= 104.1):
         return "unknown"
     
-    # Define boundary thresholds based on Singapore's actual geography
-    LAT_SOUTH = 1.27
-    LAT_CENTRAL_SOUTH = 1.27  
-    LAT_CENTRAL_NORTH = 1.32
-    LAT_NORTH = 1.37
+    # First, check if point falls within any defined boundary
+    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
+        if (bounds["lat_min"] <= lat <= bounds["lat_max"] and 
+            bounds["lon_min"] <= lng <= bounds["lon_max"]):
+            # Special handling: prefer downtown over overlapping regions
+            if cluster_name == "central" and "downtown" in SINGAPORE_GEOCLUSTERS_BOUNDARIES:
+                downtown = SINGAPORE_GEOCLUSTERS_BOUNDARIES["downtown"]
+                if (downtown["lat_min"] <= lat <= downtown["lat_max"] and 
+                    downtown["lon_min"] <= lng <= downtown["lon_max"]):
+                    return "downtown"
+            return cluster_name
     
-    LNG_WEST = 103.75
-    LNG_CENTRAL_WEST = 103.82
-    LNG_CENTRAL_EAST = 103.87
-    LNG_EAST = 103.95
-    
-    # Central region first (Downtown, Marina, Orchard area)
-    if (LAT_CENTRAL_SOUTH <= lat <= LAT_CENTRAL_NORTH and 
-        LNG_CENTRAL_WEST <= lng <= LNG_CENTRAL_EAST):
-        return "central"
-    
-    # Determine region based on coordinates
-    if lat > LAT_NORTH:
-        if lng < LNG_WEST:
-            return "north-west"
-        elif lng > LNG_EAST:
-            return "north-east"
-        else:
-            return "north"
-    elif lat < LAT_SOUTH:
-        if lng < LNG_WEST:
-            return "south-west"
-        elif lng > LNG_EAST:
-            return "south-east"
-        else:
-            return "south"
-    else:  # Middle latitude
-        if lng < LNG_WEST:
-            return "west"
-        elif lng > LNG_EAST:
-            return "east"
-        else:
-            # Areas between central and outer
-            if lng < LNG_CENTRAL_WEST:
-                return "west"
-            elif lng > LNG_CENTRAL_EAST:
-                return "east"
-            else:
-                return "central"
+    # If point doesn't fall within any boundary, find closest cluster
+    return find_closest_cluster(lat, lng)
 
-
-def group_places_by_proximity(places: list, min_cluster_size: int = 3) -> dict:
+def find_closest_cluster(lat: float, lng: float) -> str:
     """
-    Group places into geographic clusters based on their locations.
-    
-    Rules:
-    1. Group places in same geographic region
-    2. Merge small clusters with nearest larger cluster
-    3. Ensure logical geographic groupings
-    
-    Args:
-        places: List of places with geo coordinates
-        min_cluster_size: Minimum places to maintain as separate cluster
-    
-    Returns:
-        Dictionary with clustering results and reasoning
+    Find the closest cluster based on distance to cluster centers.
     """
-    # Step 1: Assign each place to its geographic cluster
-    clusters = {}
-    unassigned = []
+    min_distance = float('inf')
+    closest_cluster = "unknown"
     
-    for place in places:
-        if place.get('geo') and place['geo'].get('latitude'):
-            cluster_id = calculate_geo_cluster(
-                place['geo']['latitude'],
-                place['geo']['longitude']
-            )
-            if cluster_id != "unknown":
-                if cluster_id not in clusters:
-                    clusters[cluster_id] = []
-                clusters[cluster_id].append(place)
-            else:
-                unassigned.append(place)
-        else:
-            unassigned.append(place)
-    
-    # Step 2: Define geographic adjacency for merging
-    adjacency = {
-        "central": ["north", "south", "east", "west"],  # Central connects to cardinal directions
-        "north": ["north-east", "north-west", "central"],
-        "south": ["south-east", "south-west", "central"],
-        "east": ["north-east", "south-east", "central"],
-        "west": ["north-west", "south-west", "central"],
-        "north-east": ["north", "east"],
-        "north-west": ["north", "west"],
-        "south-east": ["south", "east"],
-        "south-west": ["south", "west"]
-    }
-    
-    # Step 3: Merge small clusters with adjacent regions
-    final_clusters = {}
-    merge_log = []
-    
-    # Sort by size to prioritize keeping larger clusters
-    sorted_clusters = sorted(clusters.items(), key=lambda x: len(x[1]), reverse=True)
-    
-    for cluster_id, cluster_places in sorted_clusters:
-        if len(cluster_places) >= min_cluster_size:
-            # Keep as separate cluster
-            final_clusters[cluster_id] = cluster_places
-        else:
-            # Find best adjacent cluster to merge with
-            best_merge = None
-            best_size = 0
-            
-            for adjacent_id in adjacency.get(cluster_id, []):
-                if adjacent_id in final_clusters:
-                    if len(final_clusters[adjacent_id]) > best_size:
-                        best_merge = adjacent_id
-                        best_size = len(final_clusters[adjacent_id])
-            
-            if best_merge:
-                final_clusters[best_merge].extend(cluster_places)
-                merge_log.append(f"Merged {cluster_id} ({len(cluster_places)} places) into {best_merge}")
-            else:
-                # No suitable merge, keep as small cluster
-                final_clusters[cluster_id] = cluster_places
-    
-    # Step 4: Handle unassigned places
-    if unassigned and final_clusters:
-        # Add to central cluster if it exists, otherwise largest cluster
-        if "central" in final_clusters:
-            final_clusters["central"].extend(unassigned)
-        else:
-            largest_cluster = max(final_clusters.keys(), key=lambda k: len(final_clusters[k]))
-            final_clusters[largest_cluster].extend(unassigned)
-    
-    # Step 5: Generate clustering reasoning
-    cluster_stats = []
-    for cluster_id, cluster_places in final_clusters.items():
-        cluster_stats.append({
-            "cluster_id": cluster_id,
-            "region_name": _get_region_name(cluster_id),
-            "place_count": len(cluster_places),
-            "places": cluster_places,
-            "characteristics": _get_cluster_characteristics(cluster_id, cluster_places)
-        })
-    
-    # Sort by place count for presentation
-    cluster_stats.sort(key=lambda x: x['place_count'], reverse=True)
-    
-    return {
-        "total_places": len(places),
-        "clusters_formed": len(cluster_stats),
-        "clustering_log": merge_log,
-        "clusters": cluster_stats,
-        "summary": _generate_clustering_summary(cluster_stats)
-    }
-
-
-def _get_region_name(cluster_id: str) -> str:
-    """Get human-readable region name."""
-    region_names = {
-        "central": "Central Singapore (City/Marina/Orchard)",
-        "north": "Northern Singapore (Woodlands/Yishun)",
-        "south": "Southern Singapore (Sentosa/HarbourFront)",
-        "east": "Eastern Singapore (Changi/Tampines)",
-        "west": "Western Singapore (Jurong)",
-        "north-east": "North-Eastern Singapore (Punggol/Sengkang)",
-        "north-west": "North-Western Singapore (Bukit Panjang/Kranji)",
-        "south-east": "South-Eastern Singapore (East Coast/Katong)",
-        "south-west": "South-Western Singapore (Clementi/Queenstown)"
-    }
-    return region_names.get(cluster_id, f"Region: {cluster_id}")
-
-
-def _get_cluster_characteristics(cluster_id: str, places: list) -> dict:
-    """Analyze characteristics of places in cluster."""
-    # Count place types
-    type_counts = {}
-    for place in places:
-        place_type = place.get('type', 'unknown')
-        type_counts[place_type] = type_counts.get(place_type, 0) + 1
-    
-    # Calculate geographic spread within cluster
-    if places:
-        lats = [p['geo']['latitude'] for p in places if p.get('geo')]
-        lngs = [p['geo']['longitude'] for p in places if p.get('geo')]
+    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
+        # Calculate center of the cluster
+        center_lat = (bounds["lat_min"] + bounds["lat_max"]) / 2
+        center_lng = (bounds["lon_min"] + bounds["lon_max"]) / 2
         
-        if lats and lngs:
-            lat_spread = max(lats) - min(lats)
-            lng_spread = max(lngs) - min(lngs)
-            spread_km = ((lat_spread * 111) ** 2 + (lng_spread * 111) ** 2) ** 0.5
-        else:
-            spread_km = 0
-    else:
-        spread_km = 0
+        # Calculate Euclidean distance (simplified for small areas)
+        # For more accuracy, use Haversine formula
+        distance = math.sqrt((lat - center_lat)**2 + (lng - center_lng)**2)
+        
+        if distance < min_distance:
+            min_distance = distance
+            closest_cluster = cluster_name
     
-    return {
-        "dominant_type": max(type_counts.items(), key=lambda x: x[1])[0] if type_counts else None,
-        "type_distribution": type_counts,
-        "geographic_spread_km": round(spread_km, 2),
-        "density": "dense" if spread_km < 2 else "moderate" if spread_km < 5 else "spread out"
-    }
+    return closest_cluster
 
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calculate the Haversine distance between two points in kilometers.
+    More accurate for geographic calculations.
+    """
+    R = 6371  # Earth's radius in kilometers
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    
+    a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    return R * c
 
-def _generate_clustering_summary(cluster_stats: list) -> str:
-    """Generate summary of clustering results."""
-    if not cluster_stats:
-        return "No clusters formed"
+def find_closest_cluster_accurate(lat: float, lng: float) -> str:
+    """
+    Find the closest cluster using Haversine distance for better accuracy.
+    """
+    min_distance = float('inf')
+    closest_cluster = "unknown"
     
-    summaries = []
+    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
+        # Calculate center of the cluster
+        center_lat = (bounds["lat_min"] + bounds["lat_max"]) / 2
+        center_lng = (bounds["lon_min"] + bounds["lon_max"]) / 2
+        
+        # Use Haversine distance for accuracy
+        distance = haversine_distance(lat, lng, center_lat, center_lng)
+        
+        if distance < min_distance:
+            min_distance = distance
+            closest_cluster = cluster_name
     
-    # Identify main clusters
-    main_clusters = [c for c in cluster_stats if c['place_count'] >= 5]
-    small_clusters = [c for c in cluster_stats if c['place_count'] < 5]
+    return closest_cluster
+
+# Alternative: Use distance to nearest edge instead of center
+def find_closest_cluster_by_edge(lat: float, lng: float) -> str:
+    """
+    Find closest cluster by calculating distance to nearest edge of each boundary.
+    """
+    min_distance = float('inf')
+    closest_cluster = "unknown"
     
-    if main_clusters:
-        cluster_names = [c['cluster_id'] for c in main_clusters]
-        summaries.append(f"Main attraction areas: {', '.join(cluster_names)}")
+    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
+        # Calculate distance to nearest point on boundary rectangle
+        # If point is inside, distance is 0
+        lat_dist = max(0, bounds["lat_min"] - lat, lat - bounds["lat_max"])
+        lng_dist = max(0, bounds["lon_min"] - lng, lng - bounds["lon_max"])
+        
+        distance = math.sqrt(lat_dist**2 + lng_dist**2)
+        
+        if distance < min_distance:
+            min_distance = distance
+            closest_cluster = cluster_name
     
-    if small_clusters:
-        summaries.append(f"{len(small_clusters)} minor area(s) with fewer attractions")
+    return closest_cluster
+
+# Test function
+def test_clustering():
+    """Test with known Singapore locations"""
+    test_locations = [
+        (1.4344838, 103.77948479999999, "Citrus By The Pool"),
+        (1.4281829, 103.7674324, "Cheval Cafe Bar Bistro"),
+        (1.4282523, 103.7993501, "elemen"),
+        (1.4032692, 103.9132265, "Anna's"),
+        (1.3969192, 103.9212159, "Daruma Tavern Punggol"),
+        (1.3858487, 103.8975509, "Big Prawn Noodle"),
+        (1.3104434999999999, 103.94609229999999, "Fico"),
+        (1.3087539, 103.9027938, "La Bottega Enoteca"),
+        (1.3148971, 103.9110412, "The Brewing Ground"),
+        (1.3130167, 103.8565232, "MTR Singapore"),
+        (1.2805121, 103.8503809, "Lau Pa Sat"),
+        (1.2803361, 103.844767, "Maxwell Food Centre"),
+        (1.3629771, 103.7645031, "iO Italian Osteria - HillV2 (Singapore)"),
+        (1.3398183000000001, 103.73076979999999, "Eden | Chinese Garden | Halal-Certified"),
+        (1.3383983, 103.75594319999999, "Laifaba Authentic Wood-Fired Roast & Noodles"),
+        (1.2893135, 103.84829479999999, "JUMBO Seafood - The Riverwalk"),
+    ]
     
-    # Note geographic spread
-    regions_covered = set(c['cluster_id'] for c in cluster_stats)
-    if "central" in regions_covered:
-        summaries.append("Strong concentration in central Singapore")
-    
-    cardinal_regions = {"north", "south", "east", "west"} & regions_covered
-    if len(cardinal_regions) >= 3:
-        summaries.append("Attractions spread across multiple regions of Singapore")
-    elif len(cardinal_regions) <= 1:
-        summaries.append("Attractions concentrated in limited geographic area")
-    
-    return ". ".join(summaries)
+    for lat, lng, name in test_locations:
+        cluster = calculate_geo_cluster(lat, lng)
+        print(f"{name}: {cluster}")

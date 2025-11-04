@@ -1173,10 +1173,7 @@ class PlacesResearchFormattingAgent:
         geo = self._extract_geo(search_data, details_data)
 
         # Calculate geo_cluster_id
-        geo_cluster_id = self._calculate_geo_cluster(
-            lat=geo.get('latitude') if geo else None,
-            lng=geo.get('longitude') if geo else None
-        )
+        geo_cluster_id = calculate_geo_cluster(geo['latitude'], geo['longitude'])
         
         # Extract address (prefer details formatted_address, fallback to vicinity)
         address = (details_data.get('formatted_address') or 
@@ -1237,49 +1234,6 @@ class PlacesResearchFormattingAgent:
         }
         
         return formatted_place
-    
-    def _calculate_geo_cluster(self, lat=None, lng=None) -> Optional[str]:
-        """
-        Calculate geo cluster ID from coordinates using Singapore geographic rules.
-
-        Args:
-            lat: Latitude value (accepts 'latitude', 'lat', or numeric value)
-            lng: Longitude value (accepts 'longitude', 'lng', 'lon', or numeric value)
-
-        Returns:
-            Cluster ID string or None if invalid/missing coordinates
-        """
-        if lat is None or lng is None:
-            return None
-
-        # Singapore bounds check
-        if not (1.1 <= lat <= 1.5 and 103.6 <= lng <= 104.1):
-            return None
-
-        # Use SINGAPORE_GEOCLUSTERS_BOUNDARIES from config
-        from config import SINGAPORE_GEOCLUSTERS_BOUNDARIES
-        import math
-
-        # Find all matching regions
-        matching_regions = []
-        for region, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
-            if (bounds["lat_min"] <= lat <= bounds["lat_max"] and
-                bounds["lon_min"] <= lng <= bounds["lon_max"]):
-                # Calculate center of the region
-                center_lat = (bounds["lat_min"] + bounds["lat_max"]) / 2
-                center_lng = (bounds["lon_min"] + bounds["lon_max"]) / 2
-
-                # Calculate distance to center using Euclidean distance
-                distance = math.sqrt((lat - center_lat)**2 + (lng - center_lng)**2)
-                matching_regions.append((region, distance))
-
-        # If multiple matches, return the closest region center
-        if matching_regions:
-            matching_regions.sort(key=lambda x: x[1])  # Sort by distance
-            return matching_regions[0][0]  # Return closest region
-
-        # Fallback to unknown if no match
-        return "unknown"
     
     def _generate_wikipedia_descriptions(self, places: List[Dict]) -> List[Dict]:
         """
@@ -1599,10 +1553,7 @@ class PlacesClusteringAgent:
             "total_clusters": len(clustered_results),
             "accommodation": {
                 "location": accommodation_location,
-                "geo_cluster_id": self._calculate_geo_cluster(
-                    lat=accommodation_location.get('lat'),
-                    lng=accommodation_location.get('lng') or accommodation_location.get('lon')
-                )
+                "geo_cluster_id": calculate_geo_cluster(accommodation_location['latitude'], accommodation_location['longitude'])
             },
             "clustered_places": clustered_results
         }
@@ -1764,6 +1715,7 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
     """
     import time
     from datetime import datetime
+    from config import SINGAPORE_GEOCLUSTERS_POINTS, FOOD_SEARCH_PARAMS_BY_CLUSTER
 
     # Load input
     input_data = load_input_file(input_file)
@@ -2030,9 +1982,69 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
         destination_city=destination_city
     )
 
-    # Combine all places
-    all_places = attraction_results + food_results
-    print(f"\n=== Total places collected: {len(all_places)} ===")
+    # Combine all places and deduplicate by place_id
+    # Food results may contain places already in attraction results
+    existing_attraction_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
+    unique_food_results = [p for p in food_results if (p.get('id') or p.get('place_id')) not in existing_attraction_ids]
+
+    duplicates_found = len(food_results) - len(unique_food_results)
+    if duplicates_found > 0:
+        print(f"\n⚠ Found {duplicates_found} duplicate place(s) between attractions and food - removed duplicates")
+
+        # Backfill: search for additional unique food places to replace duplicates
+        if duplicates_found > 0 and not agent.check_timeout(start_time):
+            print(f"\n=== Backfilling {duplicates_found} food place(s) to replace duplicates ===")
+
+            # Collect all existing IDs (attractions + unique food)
+            all_existing_ids = existing_attraction_ids | {(p.get('id') or p.get('place_id')) for p in unique_food_results}
+
+            backfill_results = []
+            for cluster_name, cluster_loc in SINGAPORE_GEOCLUSTERS_POINTS.items():
+                if len(backfill_results) >= duplicates_found:
+                    break
+
+                # Get cluster-specific search params
+                cluster_params = FOOD_SEARCH_PARAMS_BY_CLUSTER.get(cluster_name, {
+                    "min_rating": 4.0,
+                    "initial_radius": 2000
+                })
+
+                print(f"\nBackfilling from {cluster_name}...")
+
+                # Search with lower rating and wider radius for backfill
+                backfill_min_rating = max(3.5, cluster_params["min_rating"] - 0.5)
+                backfill_radius = cluster_params["initial_radius"] + 1000
+
+                for food_term in food_search_terms:
+                    if len(backfill_results) >= duplicates_found:
+                        break
+
+                    results = agent.search_with_requirements(
+                        location=cluster_loc,
+                        included_types=food_term,
+                        min_rating=backfill_min_rating,
+                        max_results_needed=duplicates_found - len(backfill_results),
+                        search_type='food',
+                        excluded_types=food_excluded_types,
+                        destination_city=destination_city,
+                        initial_radius=backfill_radius
+                    )
+
+                    # Only add results not already in our collection
+                    new_backfill = [p for p in results if (p.get('id') or p.get('place_id')) not in all_existing_ids]
+
+                    if new_backfill:
+                        backfill_results.extend(new_backfill)
+                        # Update existing IDs to avoid duplicates in backfill
+                        all_existing_ids.update({(p.get('id') or p.get('place_id')) for p in new_backfill})
+                        print(f"  {cluster_name}/{food_term}: +{len(new_backfill)} backfilled")
+
+            if backfill_results:
+                unique_food_results.extend(backfill_results[:duplicates_found])
+                print(f"\n✓ Backfilled {len(backfill_results[:duplicates_found])} unique food place(s)")
+
+    all_places = attraction_results + unique_food_results
+    print(f"\n=== Total places collected: {len(all_places)} (attractions: {len(attraction_results)}, unique food: {len(unique_food_results)}) ===")
 
     # Fetch place details from Google Places API
     print(f"\n=== Fetching place details ===")

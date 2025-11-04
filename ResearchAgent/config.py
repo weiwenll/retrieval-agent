@@ -710,7 +710,7 @@ SINGAPORE_GEOCLUSTERS_BOUNDARIES = {
     "central": {"lat_min": 1.315, "lat_max": 1.390, "lon_min": 103.820, "lon_max": 103.870},
     "downtown": {"lat_min": 1.260, "lat_max": 1.320, "lon_min": 103.825, "lon_max": 103.885},
     "south": {"lat_min": 1.225, "lat_max": 1.315, "lon_min": 103.775, "lon_max": 103.835},
-    }
+}
 
 
 # Geographic clusters with multiple search points for food search distribution across Singapore
