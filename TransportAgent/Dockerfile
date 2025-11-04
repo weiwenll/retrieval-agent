@@ -16,7 +16,8 @@ COPY tools.py monitoring.py ${LAMBDA_TASK_ROOT}/
 # main.py is REQUIRED because lambda_handler.py imports from it
 COPY TransportAgent/main.py \
     TransportAgent/config.py \
-    TransportAgent/carbon_calculator.py \
+    TransportAgent/tools.py \
+    TransportAgent/singapore_transport_carbon_score.py \
     TransportAgent/lambda_handler.py \
     ${LAMBDA_TASK_ROOT}/
 
