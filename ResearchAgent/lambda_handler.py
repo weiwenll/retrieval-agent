@@ -12,7 +12,7 @@ Expected API Gateway payload:
 
 Parameters:
 - bucket_name: S3 bucket name where input file is located
-- key: Full S3 key path to input file (e.g., "planner_agent/20251101120000.json")
+- key: Full S3 key path to input file (e.g., "retrieval_agent/20251101120000.json")
 - sender_agent: Name of the agent that previously processed this request (for logging/tracking)
 - session: Session ID to track related requests across agents and name output files
 - async: Boolean flag to enable async processing (returns 202 immediately)
@@ -569,15 +569,15 @@ def status_handler(event, context):
 
 
 # For local testing
-if __name__ == "__main__":
-    test_event = {
-        'body': {
-            'bucket_name': 'iss-travel-planner',
-            'key': 'retrieval_agent/20251101120000.json',
-            'sender_agent': 'Retrieval Agent',
-            'session': 'A52321B'
-        }
-    }
+# if __name__ == "__main__":
+#     test_event = {
+#         'body': {
+#             'bucket_name': 'iss-travel-planner',
+#             'key': 'retrieval_agent/20251101120000.json',
+#             'sender_agent': 'Retrieval Agent',
+#             'session': 'A52321B'
+#         }
+#     }
 
-    result = lambda_handler(test_event, None)
-    print(json.dumps(result, indent=2))
+#     result = lambda_handler(test_event, None)
+#     print(json.dumps(result, indent=2))
