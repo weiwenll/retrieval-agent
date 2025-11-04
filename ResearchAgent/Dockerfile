@@ -23,6 +23,8 @@ COPY ResearchAgent/main.py \
     ResearchAgent/tools.py \
     ResearchAgent/tool_clustering.py \
     ResearchAgent/lambda_handler.py \
+    ResearchAgent/singapore_onsite_carbon_config.py \
+    ResearchAgent/singapore_onsite_carbon_config.py \
     ${LAMBDA_TASK_ROOT}/
 
 # Set the Lambda handler
