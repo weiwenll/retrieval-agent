@@ -143,7 +143,6 @@ Resources:
     Properties:
       Name: !Sub 'retrieval-agent-api-${Environment}'
       StageName: !Ref Environment
-      Description: !Sub 'Deployed at ${DeploymentTimestamp}'  # Force redeployment on timestamp change
       Cors:
         AllowMethods: "'POST, OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
@@ -153,6 +152,7 @@ Resources:
         info:
           title: Retrieval Agent API
           version: 1.0.0
+          description: !Sub 'Deployed at ${DeploymentTimestamp} | Commit: ${ImageTag}'  # Force redeployment by changing API definition
         components:
           securitySchemes:
             api_key:
