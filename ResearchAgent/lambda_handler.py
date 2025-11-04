@@ -1,12 +1,13 @@
 """
-Lambda handler for ResearchAgent with S3 input/output
+Lambda handler for ResearchAgent with S3 input/output and async support
 
 Expected API Gateway payload:
 {
     "bucket_name": "iss-travel-planner",
     "key": "retrieval_agent/20251101120000.json",
     "sender_agent": "Intent Agent",
-    "session": "A52321B"
+    "session": "A52321B",
+    "async": true  // Optional: enable async processing (default: false)
 }
 
 Parameters:
@@ -14,9 +15,11 @@ Parameters:
 - key: Full S3 key path to input file (e.g., "planner_agent/20251101120000.json")
 - sender_agent: Name of the agent that previously processed this request (for logging/tracking)
 - session: Session ID to track related requests across agents and name output files
+- async: Boolean flag to enable async processing (returns 202 immediately)
 
 Input location: s3://{bucket_name}/{key}
 Output location: s3://{bucket_name}/planner_agent/{filename}.json
+Status location (async): s3://{bucket_name}/planner_agent/status/{session_id}.json
 """
 
 import json
@@ -73,6 +76,61 @@ s3_client = boto3.client('s3')
 
 # Output prefix for research agent output
 OUTPUT_PREFIX = 'planner_agent/'
+STATUS_PREFIX = 'planner_agent/status/'
+
+
+def write_status(bucket_name: str, session_id: str, status: str, **kwargs):
+    """
+    Write processing status to S3 for async tracking.
+
+    Args:
+        bucket_name: S3 bucket name
+        session_id: Session ID
+        status: Status string ('processing', 'completed', 'failed')
+        **kwargs: Additional status data
+    """
+    status_key = f"{STATUS_PREFIX}{session_id}.json"
+    status_data = {
+        'session_id': session_id,
+        'status': status,
+        'timestamp': datetime.utcnow().isoformat(),
+        'agent': 'ResearchAgent',
+        **kwargs
+    }
+
+    try:
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=status_key,
+            Body=json.dumps(status_data),
+            ContentType='application/json'
+        )
+        logger.info(f"Status updated: {status} for session {session_id}")
+    except Exception as e:
+        logger.error(f"Failed to write status for {session_id}: {e}")
+
+
+def get_status(bucket_name: str, session_id: str):
+    """
+    Get processing status from S3.
+
+    Args:
+        bucket_name: S3 bucket name
+        session_id: Session ID
+
+    Returns:
+        Status dict or None if not found
+    """
+    status_key = f"{STATUS_PREFIX}{session_id}.json"
+
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=status_key)
+        status_data = json.loads(response['Body'].read())
+        return status_data
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            return None
+        raise
 
 
 def lambda_handler(event, context):
@@ -107,6 +165,13 @@ def lambda_handler(event, context):
         input_key = body.get('key', '').strip()
         sender_agent = body.get('sender_agent', '').strip()
         session_id = body.get('session', '').strip()
+        async_mode = body.get('async', True)  # Default to async to prevent timeouts
+
+        # Log when defaulting to async mode
+        if 'async' not in body:
+            log_structured('INFO', 'Defaulting to async mode to prevent timeout',
+                session_id=session_id,
+                stage='initialization')
 
         # Structured logging: Request received
         log_structured('INFO', 'Request received',
@@ -115,6 +180,7 @@ def lambda_handler(event, context):
             bucket_name=bucket_name,
             input_key=input_key,
             sender_agent=sender_agent,
+            async_mode=async_mode,
             workflow_chain=f"{sender_agent} -> ResearchAgent")
 
         # Validate required parameters
@@ -160,6 +226,18 @@ def lambda_handler(event, context):
             output_s3=f"s3://{bucket_name}/{output_s3_key}",
             filename=filename)
 
+        # Write initial status for async mode
+        if async_mode:
+            write_status(
+                bucket_name, session_id, 'processing',
+                input_key=input_key,
+                output_key=output_s3_key,
+                sender_agent=sender_agent,
+                started_at=datetime.utcnow().isoformat()
+            )
+            log_structured('INFO', 'Async mode: Status set to processing',
+            session_id=session_id, stage='async_status')
+
         # Create temporary files for processing
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as input_tmp:
             input_tmp_path = input_tmp.name
@@ -200,6 +278,15 @@ def lambda_handler(event, context):
                     stage='research_processing',
                     error=result['error'],
                     duration_ms=round(processing_duration * 1000, 2))
+
+                # Update status for async mode
+                if async_mode:
+                    write_status(
+                        bucket_name, session_id, 'failed',
+                        error=result['error'],
+                        failed_at=datetime.utcnow().isoformat()
+                    )
+
                 return {
                     'statusCode': 500,
                     'body': json.dumps({
@@ -258,6 +345,19 @@ def lambda_handler(event, context):
                 }
             }
 
+            # Update status for async mode
+            if async_mode:
+                write_status(
+                    bucket_name, session_id, 'completed',
+                    output_key=output_s3_key,
+                    output_location=f"s3://{bucket_name}/{output_s3_key}",
+                    places_found=result['retrieval']['places_found'],
+                    attractions_count=result['retrieval']['attractions_count'],
+                    food_count=result['retrieval']['food_count'],
+                    completed_at=datetime.utcnow().isoformat(),
+                    duration_ms=round(total_duration * 1000, 2)
+                )
+
             # Structured logging: Request completed successfully
             log_structured('INFO', 'Request completed successfully',
                 session_id=session_id,
@@ -293,6 +393,7 @@ def lambda_handler(event, context):
         session_id = body.get('session', 'unknown')
         bucket = body.get('bucket_name', 'unknown')
         key = body.get('key', 'unknown')
+        async_mode = body.get('async', False)
 
         error_code = e.response.get('Error', {}).get('Code', 'Unknown')
 
@@ -303,6 +404,14 @@ def lambda_handler(event, context):
                 error_code=error_code,
                 s3_uri=f"s3://{bucket}/{key}",
                 success=False)
+
+            # Update status for async mode
+            if async_mode and bucket != 'unknown':
+                write_status(bucket, session_id, 'failed',
+                error=f"Input file not found: s3://{bucket}/{key}",
+                error_code=error_code,
+                failed_at=datetime.utcnow().isoformat())
+
             return {
                 'statusCode': 404,
                 'body': json.dumps({
@@ -318,6 +427,14 @@ def lambda_handler(event, context):
             error_code=error_code,
             error_message=str(e),
             success=False)
+
+        # Update status for async mode
+        if async_mode and bucket != 'unknown':
+            write_status(bucket, session_id, 'failed',
+            error=f"S3 error: {str(e)}",
+            error_code=error_code,
+            failed_at=datetime.utcnow().isoformat())
+
         return {
             'statusCode': 500,
             'body': json.dumps({
@@ -334,8 +451,12 @@ def lambda_handler(event, context):
             if isinstance(body, str):
                 body = json.loads(body)
             session_id = body.get('session', 'unknown')
+            bucket = body.get('bucket_name', 'unknown')
+            async_mode = body.get('async', False)
         except:
             session_id = 'unknown'
+            bucket = 'unknown'
+            async_mode = False
 
         log_structured('ERROR', 'Unexpected error occurred',
             session_id=session_id,
@@ -344,12 +465,89 @@ def lambda_handler(event, context):
             error_message=str(e),
             success=False)
         logger.error(f"Unexpected error: {e}", exc_info=True)
+
+        # Update status for async mode
+        if async_mode and bucket != 'unknown':
+            write_status(bucket, session_id, 'failed',
+            error=f"Internal server error: {str(e)}",
+            error_type=type(e).__name__,
+            failed_at=datetime.utcnow().isoformat())
+
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'status': 'error',
                 'session_id': session_id,
                 'error': f"Internal server error: {str(e)}"
+            })
+        }
+
+
+def status_handler(event, context):
+    """
+    Lambda handler to check status of async processing.
+
+    Expected payload:
+    {
+        "bucket_name": "iss-travel-planner",
+        "session": "A52321B"
+    }
+
+    Returns:
+        Status information or 404 if not found
+    """
+    try:
+        # Parse request body
+        if isinstance(event.get('body'), str):
+            body = json.loads(event['body'])
+        else:
+            body = event.get('body', event)
+
+        bucket_name = body.get('bucket_name', '').strip()
+        session_id = body.get('session', '').strip()
+
+        # Validate parameters
+        if not bucket_name or not session_id:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'error': 'Missing required parameters: bucket_name and session'
+                })
+            }
+
+        # Get status from S3
+        status_data = get_status(bucket_name, session_id)
+
+        if not status_data:
+            return {
+                'statusCode': 404,
+                'body': json.dumps({
+                    'session_id': session_id,
+                    'status': 'not_found',
+                    'message': 'No status found for this session'
+                })
+            }
+
+        # If completed, include output location
+        if status_data.get('status') == 'completed':
+            output_key = status_data.get('output_key')
+            status_data['output_location'] = f"s3://{bucket_name}/{output_key}"
+
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps(status_data)
+        }
+
+    except Exception as e:
+        logger.error(f"Status check error: {e}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': f"Failed to retrieve status: {str(e)}"
             })
         }
 
