@@ -646,6 +646,11 @@ class TransportSustainabilityAgent:
 
         transport_modes = []
         for mode, mode_data in transport_options.items():
+            # Check if mode_data is None and log it
+            if mode_data is None:
+                logger.warning(f"mode_data is None for mode: {mode}")
+                continue
+
             # Map API mode names to user-friendly names (standardized terminology)
             mode_map = {
                 "WALK": "walk",
@@ -656,7 +661,7 @@ class TransportSustainabilityAgent:
             friendly_mode = mode_map.get(mode, mode.lower())
 
             # For TRANSIT mode, determine if it's mrt, bus, or public_transport
-            if mode == "TRANSIT" and "transit_summary" in mode_data:
+            if mode == "TRANSIT" and mode_data and "transit_summary" in mode_data:
                 transit_summary = mode_data.get("transit_summary", "").lower()
                 # Check if it contains both MRT and Bus
                 has_mrt = "mrt" in transit_summary or "metro" in transit_summary or "train" in transit_summary
@@ -695,7 +700,7 @@ class TransportSustainabilityAgent:
             }
 
             # Add transit summary if available (for all transit modes)
-            if mode == "TRANSIT" and "transit_summary" in mode_data:
+            if mode == "TRANSIT" and mode_data and "transit_summary" in mode_data:
                 transport_mode_entry["transit_summary"] = mode_data["transit_summary"]
                 transport_mode_entry["num_transfers"] = mode_data.get("num_transfers", 0)
 
