@@ -516,9 +516,6 @@ Resources:
     Properties:
       Name: !Sub 'retrieval-agent-key-${Environment}'
       Enabled: true
-      StageKeys:
-        - RestApiId: !Ref ApiGateway
-          StageName: !Ref Environment
 
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
