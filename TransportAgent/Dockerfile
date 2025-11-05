@@ -10,15 +10,17 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt && \
     pip cache purge 2>/dev/null || true
 
 # Copy shared modules from root
-COPY tools.py monitoring.py ${LAMBDA_TASK_ROOT}/
+COPY tools.py monitoring.py shared_utils.py ${LAMBDA_TASK_ROOT}/
 
 # Copy all TransportAgent files in a single layer
-# main.py is REQUIRED because lambda_handler.py imports from it
+# main.py is REQUIRED because sqs_processor.py imports from it
 COPY TransportAgent/main.py \
     TransportAgent/config.py \
     TransportAgent/tools.py \
     TransportAgent/singapore_transport_carbon_score.py \
-    TransportAgent/lambda_handler.py \
+    TransportAgent/sqs_processor.py \
+    TransportAgent/queue_handler.py \
+    TransportAgent/status_handler.py \
     ${LAMBDA_TASK_ROOT}/
 
 # Set the Lambda handler
