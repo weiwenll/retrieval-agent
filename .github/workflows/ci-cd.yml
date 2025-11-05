@@ -195,14 +195,18 @@ jobs:
       - name: Test ResearchAgent Container
         run: |
           echo "Testing ResearchAgent container imports..."
-          docker run --rm --entrypoint python ${{ steps.meta.outputs.research-tag }} \
-            -c "import queue_handler, sqs_processor, status_handler, shared_utils, main; print('✓ ResearchAgent imports successful')"
+          docker run --rm \
+            -e AWS_DEFAULT_REGION=ap-southeast-1 \
+            --entrypoint python ${{ steps.meta.outputs.research-tag }} \
+            -c "import queue_handler, sqs_processor, status_handler, shared_utils, main; print('[Ok] ResearchAgent imports successful')"
 
       - name: Test TransportAgent Container
         run: |
           echo "Testing TransportAgent container imports..."
-          docker run --rm --entrypoint python ${{ steps.meta.outputs.transport-tag }} \
-            -c "import queue_handler, sqs_processor, status_handler, shared_utils, main; print('✓ TransportAgent imports successful')"
+          docker run --rm \
+            -e AWS_DEFAULT_REGION=ap-southeast-1 \
+            --entrypoint python ${{ steps.meta.outputs.transport-tag }} \
+            -c "import queue_handler, sqs_processor, status_handler, shared_utils, main; print('[Ok] TransportAgent imports successful')"
 
   # ============================================================================
   # Push to ECR (if on master branches)
