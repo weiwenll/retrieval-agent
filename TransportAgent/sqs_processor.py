@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import existing functions
 from main import process_transport_data
-from shared_utils import write_status, log_structured
+from shared_utils import write_status, log_structured, delete_status
 
 # Configure logging
 logger = logging.getLogger()
@@ -202,6 +202,14 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
             duration_ms=round(total_duration * 1000, 2),
             agent_type='TransportAgent'
         )
+
+        # Clean up status file after successful completion
+        # The GET endpoint will now find the result in processed/ folder
+        log_structured('INFO', 'Cleaning up status file',
+            session_id=session_id,
+            stage='cleanup')
+
+        delete_status(bucket_name, session_id, agent_type='TransportAgent')
 
         return {
             'status': 'success',

@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import existing functions
 from main import research_places
-from shared_utils import write_status, log_structured
+from shared_utils import write_status, log_structured, delete_status
 
 # Configure logging
 logger = logging.getLogger()
@@ -62,7 +62,8 @@ def lambda_handler(event, context):
                 input_key=input_key,
                 sender_agent=sender_agent,
                 started_at=datetime.utcnow().isoformat(),
-                sqs_message_id=record['messageId']
+                sqs_message_id=record['messageId'],
+                agent_type='ResearchAgent'
             )
 
             # Process the research task
@@ -156,7 +157,8 @@ def process_research_task(bucket_name: str, input_key: str, session_id: str, tas
                 task_id=task_id,
                 error=result['error'],
                 failed_at=datetime.utcnow().isoformat(),
-                duration_ms=round((time.time() - processing_start) * 1000, 2)
+                duration_ms=round((time.time() - processing_start) * 1000, 2),
+                agent_type='ResearchAgent'
             )
 
             return {
@@ -202,8 +204,17 @@ def process_research_task(bucket_name: str, input_key: str, session_id: str, tas
             food_count=result['retrieval']['food_count'],
             completed_at=datetime.utcnow().isoformat(),
             duration_ms=round(total_duration * 1000, 2),
-            processing_time_seconds=result['retrieval']['time_elapsed']
+            processing_time_seconds=result['retrieval']['time_elapsed'],
+            agent_type='ResearchAgent'
         )
+
+        # Clean up status file after successful completion
+        # The GET endpoint will now find the result in processed/ folder
+        log_structured('INFO', 'Cleaning up status file',
+            session_id=session_id,
+            stage='cleanup')
+
+        delete_status(bucket_name, session_id, agent_type='ResearchAgent')
 
         return {
             'status': 'success',
@@ -228,7 +239,8 @@ def process_research_task(bucket_name: str, input_key: str, session_id: str, tas
             task_id=task_id,
             error=f"S3 error: {str(e)}",
             error_code=error_code,
-            failed_at=datetime.utcnow().isoformat()
+            failed_at=datetime.utcnow().isoformat(),
+            agent_type='ResearchAgent'
         )
 
         return {
@@ -248,7 +260,8 @@ def process_research_task(bucket_name: str, input_key: str, session_id: str, tas
             task_id=task_id,
             error=f"Internal error: {str(e)}",
             error_type=type(e).__name__,
-            failed_at=datetime.utcnow().isoformat()
+            failed_at=datetime.utcnow().isoformat(),
+            agent_type='ResearchAgent'
         )
 
         return {
