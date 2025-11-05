@@ -11,10 +11,13 @@ import uuid
 from datetime import datetime
 from lambda_handler import write_status, log_structured
 
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Initialize clients outside handler for reuse across warm invocations
 sqs_client = boto3.client('sqs')
+s3_client = boto3.client('s3')
 
 
 def lambda_handler(event, context):
@@ -49,18 +52,30 @@ def lambda_handler(event, context):
         if not bucket_name:
             return {
                 'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 'body': json.dumps({'error': 'Missing required parameter: bucket_name'})
             }
 
         if not input_key:
             return {
                 'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 'body': json.dumps({'error': 'Missing required parameter: key'})
             }
 
         if not session_id:
             return {
                 'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 'body': json.dumps({'error': 'Missing required parameter: session'})
             }
 
@@ -112,15 +127,19 @@ def lambda_handler(event, context):
             task_id=task_id,
             sqs_message_id=response['MessageId'])
 
-        # Write initial status to S3
-        write_status(
-            bucket_name, session_id, 'queued',
-            task_id=task_id,
-            input_key=input_key,
-            sender_agent=sender_agent,
-            created_at=datetime.utcnow().isoformat(),
-            sqs_message_id=response['MessageId']
-        )
+        # Write initial status to S3 (non-blocking, don't fail if this errors)
+        try:
+            write_status(
+                bucket_name, session_id, 'queued',
+                task_id=task_id,
+                input_key=input_key,
+                sender_agent=sender_agent,
+                created_at=datetime.utcnow().isoformat(),
+                sqs_message_id=response['MessageId']
+            )
+        except Exception as status_error:
+            # Log error but don't fail the request
+            logger.warning(f"Failed to write status to S3 (non-critical): {status_error}")
 
         # Return 202 Accepted immediately
         return {
@@ -135,7 +154,7 @@ def lambda_handler(event, context):
                 'task_id': task_id,
                 'session_id': session_id,
                 'sqs_message_id': response['MessageId'],
-                'status_location': f"s3://{bucket_name}/planner_agent/status/{session_id}.json",
+                'status_location': f"s3://{bucket_name}/retrieval_agent/status/{session_id}.json",
                 'estimated_completion': 'within 15 minutes'
             })
         }
