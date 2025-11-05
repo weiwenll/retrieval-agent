@@ -533,9 +533,6 @@ Resources:
 
   UsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
-    DependsOn:
-      - ApiKey
-      - UsagePlan
     Properties:
       KeyId: !Ref ApiKey
       KeyType: API_KEY
