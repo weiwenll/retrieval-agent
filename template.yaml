@@ -384,8 +384,8 @@ Resources:
       PackageType: Image
       ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-${ImageTag}'
       Role: !GetAtt ResearchQueueHandlerRole.Arn
-      Timeout: 30
-      MemorySize: 256
+      Timeout: 60
+      MemorySize: 1024
       ImageConfig:
         Command: ["queue_handler.lambda_handler"]
       Environment:
@@ -432,8 +432,8 @@ Resources:
       PackageType: Image
       ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:transport-${ImageTag}'
       Role: !GetAtt TransportQueueHandlerRole.Arn
-      Timeout: 30
-      MemorySize: 256
+      Timeout: 60
+      MemorySize: 1024
       ImageConfig:
         Command: ["queue_handler.lambda_handler"]
       Environment:
@@ -506,6 +506,11 @@ Resources:
         AllowOrigin: "'*'"
       Auth:
         ApiKeyRequired: true
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
 
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
