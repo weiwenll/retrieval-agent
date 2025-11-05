@@ -409,7 +409,6 @@ Resources:
       Role: !GetAtt ResearchAgentRole.Arn
       Timeout: 900
       MemorySize: 3008
-      ReservedConcurrentExecutions: 10
       ImageConfig:
         Command: ["sqs_processor.lambda_handler"]
       Environment:
@@ -458,7 +457,6 @@ Resources:
       Role: !GetAtt TransportAgentRole.Arn
       Timeout: 900
       MemorySize: 3008
-      ReservedConcurrentExecutions: 10
       ImageConfig:
         Command: ["transport_processor.lambda_handler"]  # Different handler for transport
       Environment:
