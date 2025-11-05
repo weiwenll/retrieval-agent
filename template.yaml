@@ -167,11 +167,11 @@ Resources:
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*/status/*'
 
-  # Research Processor Role
-  ResearchProcessorRole:
+  # Research Agent Role
+  ResearchAgentRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'research-processor-role-${Environment}'
+      RoleName: !Sub 'research-agent-role-${Environment}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -182,7 +182,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ResearchProcessorPolicy
+        - PolicyName: ResearchAgentPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -234,11 +234,11 @@ Resources:
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*/status/*'
 
-  # Transport Processor Role
-  TransportProcessorRole:
+  # Transport Agent Role
+  TransportAgentRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'transport-processor-role-${Environment}'
+      RoleName: !Sub 'transport-agent-role-${Environment}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -249,7 +249,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: TransportProcessorPolicy
+        - PolicyName: TransportAgentPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -266,7 +266,7 @@ Resources:
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*'
 
-  # Status Checker Role (shared)
+  # Status Checker Role
   StatusCheckerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -332,7 +332,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'research-queue-handler-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/research-agent:${ImageTag}'
       Role: !GetAtt ResearchQueueHandlerRole.Arn
       Timeout: 30
       MemorySize: 256
@@ -350,13 +350,13 @@ Resources:
             Method: POST
             RestApiId: !Ref ApiGateway
 
-  ResearchProcessorFunction:
+  ResearchAgentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'research-processor-${Environment}'
+      FunctionName: !Sub 'research-agent-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
-      Role: !GetAtt ResearchProcessorRole.Arn
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/research-agent:${ImageTag}'
+      Role: !GetAtt ResearchAgentRole.Arn
       Timeout: 900
       MemorySize: 3008
       ReservedConcurrentExecutions: 10
@@ -381,7 +381,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'transport-queue-handler-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/transport-agent:${ImageTag}'
       Role: !GetAtt TransportQueueHandlerRole.Arn
       Timeout: 30
       MemorySize: 256
@@ -399,13 +399,13 @@ Resources:
             Method: POST
             RestApiId: !Ref ApiGateway
 
-  TransportProcessorFunction:
+  TransportAgentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'transport-processor-${Environment}'
+      FunctionName: !Sub 'transport-agent-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
-      Role: !GetAtt TransportProcessorRole.Arn
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/transport-agent:${ImageTag}'
+      Role: !GetAtt TransportAgentRole.Arn
       Timeout: 900
       MemorySize: 3008
       ReservedConcurrentExecutions: 10
@@ -425,12 +425,14 @@ Resources:
             BatchSize: 1
 
   # SHARED STATUS CHECKER
+  # Uses research-agent image since status_handler is available in both research and transport images
+  # We choose research-agent for consistency as it's the primary agent
   StatusCheckerFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'status-checker-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-${ImageTag}'
       Role: !GetAtt StatusCheckerRole.Arn
       Timeout: 30
       MemorySize: 256
