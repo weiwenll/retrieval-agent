@@ -58,35 +58,30 @@ Resources:
           # Clean up old object versions (safe for SQS)
           - Id: CleanupOldVersions
             Status: Enabled
-            NoncurrentVersionExpirationInDays: 90  # Extended from 30 to 90 days
-            Filter:
-              Prefix: ""
+            NoncurrentVersionExpirationInDays: 90
           # Archive processed data (avoid active processing paths)
           - Id: ArchiveProcessedData
             Status: Enabled
-            Filter:
-              Prefix: processed/  # Only apply to processed data
+            Prefix: processed/
             Transitions:
-              - Days: 30
+              - TransitionInDays: 30
                 StorageClass: STANDARD_IA
-              - Days: 90
+              - TransitionInDays: 90
                 StorageClass: GLACIER
-            ExpirationInDays: 2555  # 7 years retention
+            ExpirationInDays: 2555
           # Clean up temporary/working files (separate from main data)
           - Id: CleanupTempFiles
             Status: Enabled
-            Filter:
-              Prefix: temp/
+            Prefix: temp/
             ExpirationInDays: 7
           # Manage logs separately (avoid interference with data processing)
           - Id: ManageLogs
             Status: Enabled
-            Filter:
-              Prefix: logs/
+            Prefix: logs/
             Transitions:
-              - Days: 30
+              - TransitionInDays: 30
                 StorageClass: STANDARD_IA
-              - Days: 90
+              - TransitionInDays: 90
                 StorageClass: GLACIER
             ExpirationInDays: 365
           # Clean up incomplete multipart uploads
@@ -330,25 +325,23 @@ Resources:
               - sqs:GetQueueAttributes
             Resource: !GetAtt TransportTaskQueue.Arn
 
-  # ResearchAgent Lambda Function
-  ResearchAgentFunction:
+  # ========== LAMBDA FUNCTIONS ==========
+  # Research Agent Functions
+  ResearchQueueHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'research-agent-${Environment}'
+      FunctionName: !Sub 'research-queue-handler-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-${ImageTag}'
-      Role: !Ref LambdaExecutionRoleArn
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      Role: !GetAtt ResearchQueueHandlerRole.Arn
+      Timeout: 30
+      MemorySize: 256
       ImageConfig:
-        Command:
-          - lambda_handler.lambda_handler
-      Architectures:
-        - x86_64
+        Command: ["queue_handler.lambda_handler"]
       Environment:
         Variables:
-          GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
-          OPENAI_API_KEY: !Ref OpenAIApiKey
-          CLIMATIQ_API_KEY: !Ref ClimatiqApiKey
-          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          QUEUE_URL: !Ref ResearchTaskQueue
+          AGENT_TYPE: research
       Events:
         ApiEvent:
           Type: Api
@@ -357,25 +350,47 @@ Resources:
             Method: POST
             RestApiId: !Ref ApiGateway
 
-  # TransportAgent Lambda Function
-  TransportAgentFunction:
+  ResearchProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'transport-agent-${Environment}'
+      FunctionName: !Sub 'research-processor-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:transport-${ImageTag}'
-      Role: !Ref LambdaExecutionRoleArn
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      Role: !GetAtt ResearchProcessorRole.Arn
+      Timeout: 900
+      MemorySize: 3008
+      ReservedConcurrentExecutions: 10
       ImageConfig:
-        Command:
-          - lambda_handler.lambda_handler
-      Architectures:
-        - x86_64
+        Command: ["sqs_processor.lambda_handler"]
       Environment:
         Variables:
           GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
           OPENAI_API_KEY: !Ref OpenAIApiKey
-          CLIMATIQ_API_KEY: !Ref ClimatiqApiKey
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          AGENT_TYPE: research
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ResearchTaskQueue.Arn
+            BatchSize: 1
+
+  # Transport Agent Functions
+  TransportQueueHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'transport-queue-handler-${Environment}'
+      PackageType: Image
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      Role: !GetAtt TransportQueueHandlerRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      ImageConfig:
+        Command: ["queue_handler.lambda_handler"]
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref TransportTaskQueue
+          AGENT_TYPE: transport
       Events:
         ApiEvent:
           Type: Api
@@ -384,135 +399,87 @@ Resources:
             Method: POST
             RestApiId: !Ref ApiGateway
 
-  # API Gateway
+  TransportProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'transport-processor-${Environment}'
+      PackageType: Image
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      Role: !GetAtt TransportProcessorRole.Arn
+      Timeout: 900
+      MemorySize: 3008
+      ReservedConcurrentExecutions: 10
+      ImageConfig:
+        Command: ["transport_processor.lambda_handler"]  # Different handler for transport
+      Environment:
+        Variables:
+          GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          AGENT_TYPE: transport
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TransportTaskQueue.Arn
+            BatchSize: 1
+
+  # SHARED STATUS CHECKER
+  StatusCheckerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'status-checker-${Environment}'
+      PackageType: Image
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:${ImageTag}'
+      Role: !GetAtt StatusCheckerRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      ImageConfig:
+        Command: ["lambda_handler.status_handler"]
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /status
+            Method: POST
+            RestApiId: !Ref ApiGateway
+
+  # ========== API GATEWAY ==========
   ApiGateway:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub 'retrieval-agent-api-${Environment}'
       StageName: !Ref Environment
       Cors:
-        AllowMethods: "'POST, OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowMethods: "'POST, GET, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
         AllowOrigin: "'*'"
-      DefinitionBody:
-        openapi: 3.0.1
-        info:
-          title: Retrieval Agent API
-          version: 1.0.0
-          description: !Sub 'Deployed at ${DeploymentTimestamp} | Commit: ${ImageTag}'  # Force redeployment by changing API definition
-        components:
-          securitySchemes:
-            api_key:
-              type: apiKey
-              name: x-api-key
-              in: header
-        security:
-          - api_key: []
-        paths:
-          /research:
-            post:
-              summary: Research attractions and food places
-              requestBody:
-                required: true
-                content:
-                  application/json:
-                    schema:
-                      type: object
-                      required:
-                        - input_s3_key
-                        - output_s3_key
-                      properties:
-                        input_s3_key:
-                          type: string
-                          description: S3 key for input file
-                        output_s3_key:
-                          type: string
-                          description: S3 key for output file
-                        s3_bucket:
-                          type: string
-                          description: S3 bucket name (optional)
-              responses:
-                '200':
-                  description: Success
-                  content:
-                    application/json:
-                      schema:
-                        type: object
-                        properties:
-                          message:
-                            type: string
-                          summary:
-                            type: object
-              x-amazon-apigateway-integration:
-                type: aws_proxy
-                httpMethod: POST
-                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResearchAgentFunction.Arn}/invocations'
-          /transport:
-            post:
-              summary: Calculate transport options and carbon emissions
-              requestBody:
-                required: true
-                content:
-                  application/json:
-                    schema:
-                      type: object
-                      required:
-                        - input_s3_key
-                        - output_s3_key
-                      properties:
-                        input_s3_key:
-                          type: string
-                          description: S3 key for input file (output from research)
-                        output_s3_key:
-                          type: string
-                          description: S3 key for output file
-                        s3_bucket:
-                          type: string
-                          description: S3 bucket name (optional)
-              responses:
-                '200':
-                  description: Success
-                  content:
-                    application/json:
-                      schema:
-                        type: object
-                        properties:
-                          message:
-                            type: string
-                          summary:
-                            type: object
-              x-amazon-apigateway-integration:
-                type: aws_proxy
-                httpMethod: POST
-                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TransportAgentFunction.Arn}/invocations'
+      Auth:
+        ApiKeyRequired: true
 
-  # API Key
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
     Properties:
       Name: !Sub 'retrieval-agent-key-${Environment}'
-      Description: API Key for Retrieval Agent
       Enabled: true
+      StageKeys:
+        - RestApiId: !Ref ApiGateway
+          StageName: !Ref Environment
 
-  # Usage Plan
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
-    DependsOn:
-      - ApiGatewayStage
     Properties:
       UsagePlanName: !Sub 'retrieval-agent-plan-${Environment}'
-      Description: Usage plan for Retrieval Agent API
       ApiStages:
         - ApiId: !Ref ApiGateway
           Stage: !Ref Environment
       Quota:
-        Limit: 1000
+        Limit: 10000
         Period: MONTH
       Throttle:
-        BurstLimit: 10
-        RateLimit: 5
+        BurstLimit: 100
+        RateLimit: 50
 
-  # Link API Key to Usage Plan
   UsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
     Properties:
@@ -520,33 +487,54 @@ Resources:
       KeyType: API_KEY
       UsagePlanId: !Ref UsagePlan
 
+  # ========== CLOUDWATCH ALARMS ==========
+  ResearchDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'research-dlq-messages-${Environment}'
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ResearchTaskDLQ.QueueName
+
+  TransportDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'transport-dlq-messages-${Environment}'
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt TransportTaskDLQ.QueueName
+
 Outputs:
   ApiEndpoint:
-    Description: API Gateway endpoint URL
+    Description: API Gateway endpoint
     Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
-    Export:
-      Name: !Sub '${AWS::StackName}-ApiEndpoint'
 
-  ApiKey:
-    Description: API Key ID (use AWS Console to get value)
+  ResearchQueueUrl:
+    Description: Research SQS Queue URL
+    Value: !Ref ResearchTaskQueue
+
+  TransportQueueUrl:
+    Description: Transport SQS Queue URL
+    Value: !Ref TransportTaskQueue
+
+  ApiKeyId:
+    Description: API Key ID
     Value: !Ref ApiKey
-    Export:
-      Name: !Sub '${AWS::StackName}-ApiKey'
 
-  DataBucketName:
-    Description: S3 bucket for data storage
+  S3Bucket:
+    Description: S3 Bucket
     Value: !Ref DataBucket
-    Export:
-      Name: !Sub '${AWS::StackName}-DataBucket'
-
-  ResearchAgentFunctionArn:
-    Description: ResearchAgent Lambda Function ARN
-    Value: !GetAtt ResearchAgentFunction.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-ResearchAgentArn'
-
-  TransportAgentFunctionArn:
-    Description: TransportAgent Lambda Function ARN
-    Value: !GetAtt TransportAgentFunction.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-TransportAgentArn'
