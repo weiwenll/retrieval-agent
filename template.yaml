@@ -166,6 +166,16 @@ Resources:
                 Action:
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*/status/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/retrieval-agent'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
 
   # Research Agent Role
   ResearchAgentRole:
@@ -198,6 +208,16 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/retrieval-agent'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
 
   # Transport Queue Handler Role
   TransportQueueHandlerRole:
@@ -233,6 +253,16 @@ Resources:
                 Action:
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*/status/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/retrieval-agent'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
 
   # Transport Agent Role
   TransportAgentRole:
@@ -265,6 +295,16 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                 Resource: !Sub '${DataBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/retrieval-agent'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
 
   # Status Checker Role
   StatusCheckerRole:
@@ -289,6 +329,16 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource: !Sub '${DataBucket.Arn}/*/status/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/retrieval-agent'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
 
   # ========== SQS ACCESS POLICIES ==========
   ResearchQueuePolicy:
