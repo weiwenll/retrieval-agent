@@ -6,9 +6,6 @@ Globals:
   Function:
     Architectures:
       - x86_64
-    Environment:
-      Variables:
-        S3_BUCKET: !Ref DataBucket
 
 Parameters:
   Environment:
@@ -42,59 +39,6 @@ Parameters:
     Description: Docker image tag (git commit SHA or latest)
 
 Resources:
-  # ========== S3 BUCKET ==========
-  DataBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'retrieval-agent-data-${Environment}'
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          # Clean up old object versions (safe for SQS)
-          - Id: CleanupOldVersions
-            Status: Enabled
-            NoncurrentVersionExpirationInDays: 90
-          # Archive processed data (avoid active processing paths)
-          - Id: ArchiveProcessedData
-            Status: Enabled
-            Prefix: processed/
-            Transitions:
-              - TransitionInDays: 30
-                StorageClass: STANDARD_IA
-              - TransitionInDays: 90
-                StorageClass: GLACIER
-            ExpirationInDays: 2555
-          # Clean up temporary/working files (separate from main data)
-          - Id: CleanupTempFiles
-            Status: Enabled
-            Prefix: temp/
-            ExpirationInDays: 7
-          # Manage logs separately (avoid interference with data processing)
-          - Id: ManageLogs
-            Status: Enabled
-            Prefix: logs/
-            Transitions:
-              - TransitionInDays: 30
-                StorageClass: STANDARD_IA
-              - TransitionInDays: 90
-                StorageClass: GLACIER
-            ExpirationInDays: 365
-          # Clean up incomplete multipart uploads
-          - Id: CleanupIncompleteUploads
-            Status: Enabled
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
   # ========== SQS QUEUES FOR RESEARCH AGENT ==========
   ResearchTaskQueue:
     Type: AWS::SQS::Queue
@@ -161,11 +105,11 @@ Resources:
                 Action:
                   - s3:HeadObject
                   - s3:GetObject
-                Resource: !Sub '${DataBucket.Arn}/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*'
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub '${DataBucket.Arn}/*/status/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*/status/*'
               - Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -207,7 +151,7 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:PutObject
-                Resource: !Sub '${DataBucket.Arn}/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*'
               - Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -248,11 +192,11 @@ Resources:
                 Action:
                   - s3:HeadObject
                   - s3:GetObject
-                Resource: !Sub '${DataBucket.Arn}/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*'
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub '${DataBucket.Arn}/*/status/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*/status/*'
               - Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -294,7 +238,7 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:PutObject
-                Resource: !Sub '${DataBucket.Arn}/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*'
               - Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -328,7 +272,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub '${DataBucket.Arn}/*/status/*'
+                Resource: 'arn:aws:s3:::iss-travel-planner/*/status/*'
               - Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -424,6 +368,25 @@ Resources:
             Queue: !GetAtt ResearchTaskQueue.Arn
             BatchSize: 1
 
+  ResearchStatusHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'research-status-handler-${Environment}'
+      PackageType: Image
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-${ImageTag}'
+      Role: !GetAtt StatusCheckerRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      ImageConfig:
+        Command: ["status_handler.lambda_handler"]
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /research
+            Method: GET
+            RestApiId: !Ref ApiGateway
+
   # Transport Agent Functions
   TransportQueueHandlerFunction:
     Type: AWS::Serverless::Function
@@ -458,7 +421,7 @@ Resources:
       Timeout: 900
       MemorySize: 3008
       ImageConfig:
-        Command: ["transport_processor.lambda_handler"]  # Different handler for transport
+        Command: ["sqs_processor.lambda_handler"]
       Environment:
         Variables:
           GOOGLE_MAPS_API_KEY: !Ref GoogleMapsApiKey
@@ -472,26 +435,23 @@ Resources:
             Queue: !GetAtt TransportTaskQueue.Arn
             BatchSize: 1
 
-  # SHARED STATUS CHECKER
-  # Uses research-agent image since status_handler is available in both research and transport images
-  # We choose research-agent for consistency as it's the primary agent
-  StatusCheckerFunction:
+  TransportStatusHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'status-checker-${Environment}'
+      FunctionName: !Sub 'transport-status-handler-${Environment}'
       PackageType: Image
-      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:research-${ImageTag}'
+      ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/retrieval-agent:transport-${ImageTag}'
       Role: !GetAtt StatusCheckerRole.Arn
       Timeout: 30
       MemorySize: 256
       ImageConfig:
-        Command: ["lambda_handler.status_handler"]
+        Command: ["status_handler.lambda_handler"]
       Events:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /status
-            Method: POST
+            Path: /transport
+            Method: GET
             RestApiId: !Ref ApiGateway
 
   # ========== API GATEWAY ==========
@@ -592,5 +552,5 @@ Outputs:
     Value: !Ref ApiKey
 
   S3Bucket:
-    Description: S3 Bucket
-    Value: !Ref DataBucket
+    Description: S3 Bucket (existing bucket, not managed by this stack)
+    Value: iss-travel-planner
