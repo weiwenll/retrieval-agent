@@ -346,39 +346,6 @@ jobs:
               GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
               AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
-
-
-      - name: Create S3 Folder Structure
-        id: create-s3-folders
-        if: steps.sam-deploy.outcome == 'success'
-        run: |
-          echo "## S3 Folder Structure Setup" >> $GITHUB_STEP_SUMMARY
-          
-          # Get S3 bucket name from stack outputs
-          BUCKET_NAME=$(aws cloudformation describe-stacks \
-            --stack-name retrieval-agent-stack \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Stacks[0].Outputs[?OutputKey==`S3Bucket`].OutputValue' \
-            --output text)
-          
-          if [ -z "$BUCKET_NAME" ]; then
-            echo "[ERROR] Failed to retrieve S3 bucket name" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-          
-          echo "S3 Bucket: \`$BUCKET_NAME\`" >> $GITHUB_STEP_SUMMARY
-          
-          # Create folder structure
-          for folder in active processed temp logs failed planner_agent planner_agent/status; do
-            aws s3api put-object \
-              --bucket $BUCKET_NAME \
-              --key "${folder}/.keep" \
-              --body /dev/null \
-              --region ${{ env.AWS_REGION }} || true
-          done
-          
-          echo "[OK] S3 folder structure created" >> $GITHUB_STEP_SUMMARY
-
       - name: Show Stack Errors if Deploy Failed
         if: steps.sam-deploy.outcome == 'failure'
         run: |
