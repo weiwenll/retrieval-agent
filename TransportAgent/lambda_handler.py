@@ -18,8 +18,8 @@ Parameters:
 - async: Boolean flag to enable async processing (returns 202 immediately)
 
 Input location: s3://{bucket_name}/{key}
-Output location: s3://{bucket_name}/final_outputs/{filename}.json
-Status location (async): s3://{bucket_name}/final_outputs/status/{session_id}.json
+Output location: s3://{bucket_name}/transport_agent/processed/{filename}.json
+Status location (async): s3://{bucket_name}/transport_agent/status/{session_id}.json
 """
 
 import json
@@ -74,9 +74,9 @@ def log_structured(level, message, session_id=None, stage=None, **kwargs):
 # Initialize S3 client
 s3_client = boto3.client('s3')
 
-# Output prefix for transport agent output
-OUTPUT_PREFIX = 'final_outputs/'
-STATUS_PREFIX = 'final_outputs/status/'
+# Output prefix for transport agent output (goes into processed folder)
+OUTPUT_PREFIX = 'transport_agent/processed/'
+STATUS_PREFIX = 'transport_agent/status/'
 
 
 def write_status(bucket_name: str, session_id: str, status: str, **kwargs):
