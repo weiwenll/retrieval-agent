@@ -14,19 +14,19 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt && \
     pip cache purge 2>/dev/null || true
 
 # Copy shared modules in a single operation
-COPY tools.py monitoring.py ${LAMBDA_TASK_ROOT}/
+COPY tools.py monitoring.py shared_utils.py ${LAMBDA_TASK_ROOT}/
 
 # Copy all ResearchAgent files in a single layer
-# main.py is REQUIRED because lambda_handler.py imports from it
+# main.py is REQUIRED because sqs_processor.py imports from it
 COPY ResearchAgent/main.py \
     ResearchAgent/config.py \
     ResearchAgent/tools.py \
     ResearchAgent/tool_clustering.py \
-    ResearchAgent/lambda_handler.py \
     ResearchAgent/singapore_onsite_carbon_config.py \
     ResearchAgent/singapore_onsite_carbon_score.py \
     ResearchAgent/sqs_processor.py \
     ResearchAgent/queue_handler.py \
+    ResearchAgent/status_handler.py \
     ${LAMBDA_TASK_ROOT}/
 
 # Set the Lambda handler

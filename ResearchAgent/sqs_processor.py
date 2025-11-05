@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import existing functions
 from main import research_places
-from lambda_handler import write_status, log_structured
+from shared_utils import write_status, log_structured
 
 # Configure logging
 logger = logging.getLogger()
@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 
 # Initialize S3 client
 s3_client = boto3.client('s3')
-OUTPUT_PREFIX = 'planner_agent/'
+OUTPUT_PREFIX = 'retrieval_agent/processed/'
 
 
 def lambda_handler(event, context):

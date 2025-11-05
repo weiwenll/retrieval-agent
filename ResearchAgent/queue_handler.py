@@ -9,7 +9,7 @@ import logging
 import boto3
 import uuid
 from datetime import datetime
-from lambda_handler import write_status, log_structured
+from shared_utils import write_status, log_structured
 
 # Configure logging
 logger = logging.getLogger()
@@ -26,10 +26,10 @@ def lambda_handler(event, context):
 
     Expected payload:
     {
-        "bucket_name": "retrieval-agent-data-prod",
-        "key": "planner_agent/input.json",
+        "bucket_name": "iss-travel-planner",
+        "key": "retrieval_agent/active/20251031T003447_f312ea72.json",
         "sender_agent": "Intent Agent",
-        "session": "A52321B"
+        "session": "f312ea72",
     }
 
     Returns:
@@ -87,7 +87,9 @@ def lambda_handler(event, context):
             stage='queue',
             task_id=task_id,
             bucket_name=bucket_name,
-            input_key=input_key)
+            key=input_key,
+            sender_agent=sender_agent,
+            session=session_id)
 
         # Prepare SQS message
         task_message = {
@@ -142,6 +144,9 @@ def lambda_handler(event, context):
             logger.warning(f"Failed to write status to S3 (non-critical): {status_error}")
 
         # Return 202 Accepted immediately
+        # Extract filename for status location (same logic as write_status)
+        status_filename = os.path.basename(input_key)
+
         return {
             'statusCode': 202,
             'headers': {
@@ -154,7 +159,7 @@ def lambda_handler(event, context):
                 'task_id': task_id,
                 'session_id': session_id,
                 'sqs_message_id': response['MessageId'],
-                'status_location': f"s3://{bucket_name}/retrieval_agent/status/{session_id}.json",
+                'status_location': f"s3://{bucket_name}/retrieval_agent/status/{status_filename}",
                 'estimated_completion': 'within 15 minutes'
             })
         }
