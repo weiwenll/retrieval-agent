@@ -334,7 +334,7 @@ jobs:
           sam deploy \
             --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
-            --capabilities CAPABILITY_IAM \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --image-repository ${{ steps.account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }} \
