@@ -29,5 +29,5 @@ COPY ResearchAgent/main.py \
     ResearchAgent/status_handler.py \
     ${LAMBDA_TASK_ROOT}/
 
-# Set the Lambda handler
-CMD ["lambda_handler.lambda_handler"]
+# Set the default Lambda handler (overridden in template.yaml for each function)
+CMD ["queue_handler.lambda_handler"]
