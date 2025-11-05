@@ -196,13 +196,13 @@ jobs:
         run: |
           echo "Testing ResearchAgent container imports..."
           docker run --rm --entrypoint python ${{ steps.meta.outputs.research-tag }} \
-            -c "import lambda_handler; print('ResearchAgent imports successful')"
+            -c "import queue_handler, sqs_processor, status_handler, shared_utils, main; print('✓ ResearchAgent imports successful')"
 
       - name: Test TransportAgent Container
         run: |
           echo "Testing TransportAgent container imports..."
           docker run --rm --entrypoint python ${{ steps.meta.outputs.transport-tag }} \
-            -c "import lambda_handler; print('TransportAgent imports successful')"
+            -c "import queue_handler, sqs_processor, status_handler, shared_utils, main; print('✓ TransportAgent imports successful')"
 
   # ============================================================================
   # Push to ECR (if on master branches)
