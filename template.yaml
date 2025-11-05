@@ -509,6 +509,10 @@ Resources:
 
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - ResearchQueueHandlerFunction
+      - TransportQueueHandlerFunction
+      - StatusCheckerFunction
     Properties:
       Name: !Sub 'retrieval-agent-key-${Environment}'
       Enabled: true
@@ -518,6 +522,10 @@ Resources:
 
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - ResearchQueueHandlerFunction
+      - TransportQueueHandlerFunction
+      - StatusCheckerFunction
     Properties:
       UsagePlanName: !Sub 'retrieval-agent-plan-${Environment}'
       ApiStages:
