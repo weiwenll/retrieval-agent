@@ -510,9 +510,7 @@ Resources:
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
     DependsOn:
-      - ResearchQueueHandlerFunction
-      - TransportQueueHandlerFunction
-      - StatusCheckerFunction
+      - ApiGatewayStage  # SAM-generated implicit stage resource
     Properties:
       Name: !Sub 'retrieval-agent-key-${Environment}'
       Enabled: true
@@ -520,9 +518,7 @@ Resources:
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
     DependsOn:
-      - ResearchQueueHandlerFunction
-      - TransportQueueHandlerFunction
-      - StatusCheckerFunction
+      - ApiGatewayStage  # SAM-generated implicit stage resource
     Properties:
       UsagePlanName: !Sub 'retrieval-agent-plan-${Environment}'
       ApiStages:
@@ -537,6 +533,9 @@ Resources:
 
   UsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn:
+      - ApiKey
+      - UsagePlan
     Properties:
       KeyId: !Ref ApiKey
       KeyType: API_KEY
