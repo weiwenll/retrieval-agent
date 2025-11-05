@@ -4,7 +4,6 @@ Description: Research and Transport Agents with SQS Async Processing
 
 Globals:
   Function:
-    Runtime: python3.11
     Architectures:
       - x86_64
     Environment:
