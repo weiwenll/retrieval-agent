@@ -82,7 +82,7 @@ def lambda_handler(event, context):
             'sender_agent': sender_agent,
             'session': session_id,
             'timestamp': datetime.utcnow().isoformat(),
-            'api_request_id': context.request_id
+            'api_request_id': context.aws_request_id
         }
 
         # Get queue URL from environment
