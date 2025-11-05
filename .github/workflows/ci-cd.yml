@@ -324,7 +324,7 @@ jobs:
             exit 1
           fi
 
-      - name: SAM Deploy to Production
+      - name: SAM Deploy to Production (Main Stack)
         id: sam-deploy
         run: |
           # Generate deployment timestamp
@@ -345,8 +345,99 @@ jobs:
               LambdaExecutionRoleArn=arn:aws:iam::${{ steps.account.outputs.account_id }}:role/retrieval-agent-LambdaRole \
               GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
-              ClimatiqApiKey="${{ secrets.CLIMATIQ_API_KEY }}" \
               AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+
+      - name: Deploy SQS Infrastructure Stack
+        id: sqs-deploy
+        run: |
+          echo "## SQS Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
+
+          # Deploy SQS stack
+          sam deploy \
+            --template-file sqs-template.yaml \
+            --stack-name research-agent-sqs-prod \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Environment=prod \
+              ImageTag=${{ github.sha }} \
+              GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
+              OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
+              AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+
+          echo "[OK] SQS stack deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Configure Research Agent for SQS
+        id: configure-sqs
+        run: |
+          echo "## Research Agent SQS Configuration" >> $GITHUB_STEP_SUMMARY
+
+          # Get Queue URL from SQS stack outputs
+          QUEUE_URL=$(aws cloudformation describe-stacks \
+            --stack-name research-agent-sqs-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`QueueUrl`].OutputValue' \
+            --output text)
+
+          if [ -z "$QUEUE_URL" ]; then
+            echo "[ERROR] Failed to retrieve Queue URL" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "Queue URL: \`$QUEUE_URL\`" >> $GITHUB_STEP_SUMMARY
+
+          # Create S3 folder structure
+          echo "Creating S3 folder structure..." >> $GITHUB_STEP_SUMMARY
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name retrieval-agent-stack \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`DataBucketName`].OutputValue' \
+            --output text)
+
+          for folder in active processed temp logs failed planner_agent planner_agent/status; do
+            aws s3api put-object \
+              --bucket $BUCKET_NAME \
+              --key "${folder}/.keep" \
+              --body /dev/null \
+              --region ${{ env.AWS_REGION }} || true
+          done
+
+          echo "[OK] S3 folder structure created" >> $GITHUB_STEP_SUMMARY
+
+          # Update research-agent-prod Lambda to use queue_handler
+          echo "Updating Lambda handler to queue_handler..."
+          aws lambda update-function-configuration \
+            --function-name research-agent-prod \
+            --environment "Variables={
+              S3_BUCKET=retrieval-agent-data-prod,
+              QUEUE_URL=$QUEUE_URL,
+              GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }},
+              OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},
+              ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            }" \
+            --region ${{ env.AWS_REGION }}
+
+          # Wait for update to complete
+          aws lambda wait function-updated \
+            --function-name research-agent-prod \
+            --region ${{ env.AWS_REGION }}
+
+          # Switch to queue_handler
+          aws lambda update-function-configuration \
+            --function-name research-agent-prod \
+            --image-config '{"Command":["queue_handler.lambda_handler"]}' \
+            --region ${{ env.AWS_REGION }}
+
+          # Wait for handler update
+          aws lambda wait function-updated \
+            --function-name research-agent-prod \
+            --region ${{ env.AWS_REGION }}
+
+          echo "[OK] Research agent configured for SQS" >> $GITHUB_STEP_SUMMARY
+          echo "- Handler: \`queue_handler.lambda_handler\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Queue: \`$QUEUE_URL\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Show Stack Errors if Deploy Failed
         if: steps.sam-deploy.outcome == 'failure'
@@ -359,25 +450,61 @@ jobs:
             --output table >> $GITHUB_STEP_SUMMARY || true
 
       - name: Verify Lambda Functions Updated
-        if: steps.sam-deploy.outcome == 'success'
+        if: steps.sam-deploy.outcome == 'success' && steps.configure-sqs.outcome == 'success'
         run: |
           echo "## Lambda Update Verification" >> $GITHUB_STEP_SUMMARY
 
           # Wait for Lambda functions to stabilize
           sleep 5
 
-          # Check ResearchAgent Lambda
+          # Check ResearchAgent Lambda (API Handler)
           RESEARCH_STATUS=$(aws lambda get-function \
             --function-name research-agent-prod \
             --region ${{ env.AWS_REGION }} \
             --query 'Configuration.LastUpdateStatus' \
             --output text)
 
+          RESEARCH_HANDLER=$(aws lambda get-function-configuration \
+            --function-name research-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'ImageConfigResponse.ImageConfig.Command[0]' \
+            --output text)
+
           echo "ResearchAgent Lambda Status: $RESEARCH_STATUS"
+          echo "ResearchAgent Handler: $RESEARCH_HANDLER"
+
           if [ "$RESEARCH_STATUS" = "Successful" ]; then
             echo "[OK] ResearchAgent Lambda updated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- Handler: \`$RESEARCH_HANDLER\`" >> $GITHUB_STEP_SUMMARY
           else
             echo "[WARNING] ResearchAgent Lambda status: $RESEARCH_STATUS" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check Research Processor Lambda (SQS Worker)
+          PROCESSOR_STATUS=$(aws lambda get-function \
+            --function-name research-processor-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Configuration.LastUpdateStatus' \
+            --output text 2>/dev/null || echo "NotFound")
+
+          if [ "$PROCESSOR_STATUS" != "NotFound" ]; then
+            PROCESSOR_HANDLER=$(aws lambda get-function-configuration \
+              --function-name research-processor-prod \
+              --region ${{ env.AWS_REGION }} \
+              --query 'ImageConfigResponse.ImageConfig.Command[0]' \
+              --output text)
+
+            echo "Processor Lambda Status: $PROCESSOR_STATUS"
+            echo "Processor Handler: $PROCESSOR_HANDLER"
+
+            if [ "$PROCESSOR_STATUS" = "Successful" ]; then
+              echo "[OK] Research Processor Lambda deployed successfully" >> $GITHUB_STEP_SUMMARY
+              echo "- Handler: \`$PROCESSOR_HANDLER\`" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "[WARNING] Research Processor Lambda status: $PROCESSOR_STATUS" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "[INFO] Research Processor Lambda not yet deployed" >> $GITHUB_STEP_SUMMARY
           fi
 
           # Check TransportAgent Lambda
@@ -511,11 +638,21 @@ jobs:
       - name: Get Stack Outputs
         run: |
           echo "## Deployment Outputs" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Main Stack" >> $GITHUB_STEP_SUMMARY
           aws cloudformation describe-stacks \
             --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
             --query 'Stacks[0].Outputs' \
             --output table >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### SQS Stack" >> $GITHUB_STEP_SUMMARY
+          aws cloudformation describe-stacks \
+            --stack-name research-agent-sqs-prod \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs' \
+            --output table >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "SQS stack outputs not available" >> $GITHUB_STEP_SUMMARY
 
       - name: Smoke test deployment
         if: steps.sam-deploy.outcome == 'success'

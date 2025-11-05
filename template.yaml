@@ -1,29 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Retrieval Agent - Research and Transport Serverless API
+Description: Research and Transport Agents with SQS Async Processing
 
 Globals:
   Function:
-    Timeout: 900  # 15 minutes max for Lambda
-    MemorySize: 2048
+    Runtime: python3.11
+    Architectures:
+      - x86_64
     Environment:
       Variables:
         S3_BUCKET: !Ref DataBucket
-        MAX_PLACES_MULTIPLIER: 2
 
 Parameters:
   Environment:
     Type: String
-    Default: dev
+    Default: prod
     AllowedValues:
       - dev
       - staging
       - prod
     Description: Environment name
-
-  LambdaExecutionRoleArn:
-    Type: String
-    Description: ARN of the IAM role for Lambda execution (must have S3 access)
 
   GoogleMapsApiKey:
     Type: String
@@ -35,12 +31,6 @@ Parameters:
     NoEcho: true
     Description: OpenAI API Key
 
-  ClimatiqApiKey:
-    Type: String
-    NoEcho: true
-    Default: ""
-    Description: Climatiq API Key (optional)
-
   AnthropicApiKey:
     Type: String
     NoEcho: true
@@ -49,15 +39,11 @@ Parameters:
 
   ImageTag:
     Type: String
-    Description: Docker image tag to deploy (must be git commit SHA, e.g. abc1234)
-
-  DeploymentTimestamp:
-    Type: String
-    Default: "1970-01-01T00:00:00Z"
-    Description: Timestamp to force API Gateway redeployment (format YYYY-MM-DDTHH:MM:SSZ)
+    Default: latest
+    Description: Docker image tag (git commit SHA or latest)
 
 Resources:
-  # S3 Bucket for logs and audit data (General Purpose)
+  # ========== S3 BUCKET ==========
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -70,18 +56,280 @@ Resources:
         Status: Enabled
       LifecycleConfiguration:
         Rules:
-          - Id: DeleteOldVersions
+          # Clean up old object versions (safe for SQS)
+          - Id: CleanupOldVersions
             Status: Enabled
-            NoncurrentVersionExpirationInDays: 30
-          - Id: DeleteOldLogs
+            NoncurrentVersionExpirationInDays: 90  # Extended from 30 to 90 days
+            Filter:
+              Prefix: ""
+          # Archive processed data (avoid active processing paths)
+          - Id: ArchiveProcessedData
             Status: Enabled
-            Prefix: logs/
-            ExpirationInDays: 90
+            Filter:
+              Prefix: processed/  # Only apply to processed data
+            Transitions:
+              - Days: 30
+                StorageClass: STANDARD_IA
+              - Days: 90
+                StorageClass: GLACIER
+            ExpirationInDays: 2555  # 7 years retention
+          # Clean up temporary/working files (separate from main data)
+          - Id: CleanupTempFiles
+            Status: Enabled
+            Filter:
+              Prefix: temp/
+            ExpirationInDays: 7
+          # Manage logs separately (avoid interference with data processing)
+          - Id: ManageLogs
+            Status: Enabled
+            Filter:
+              Prefix: logs/
+            Transitions:
+              - Days: 30
+                StorageClass: STANDARD_IA
+              - Days: 90
+                StorageClass: GLACIER
+            ExpirationInDays: 365
+          # Clean up incomplete multipart uploads
+          - Id: CleanupIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+
+  # ========== SQS QUEUES FOR RESEARCH AGENT ==========
+  ResearchTaskQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'research-tasks-${Environment}'
+      VisibilityTimeout: 960  # 16 minutes
+      MessageRetentionPeriod: 345600  # 4 days
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ResearchTaskDLQ.Arn
+        maxReceiveCount: 3
+
+  ResearchTaskDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'research-tasks-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # ========== SQS QUEUES FOR TRANSPORT AGENT ==========
+  TransportTaskQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'transport-tasks-${Environment}'
+      VisibilityTimeout: 960  # 16 minutes
+      MessageRetentionPeriod: 345600  # 4 days
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TransportTaskDLQ.Arn
+        maxReceiveCount: 3
+
+  TransportTaskDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'transport-tasks-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # ========== IAM ROLES ==========
+  # Research Queue Handler Role
+  ResearchQueueHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'research-queue-handler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ResearchQueueHandlerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:GetQueueUrl
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt ResearchTaskQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:HeadObject
+                  - s3:GetObject
+                Resource: !Sub '${DataBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub '${DataBucket.Arn}/*/status/*'
+
+  # Research Processor Role
+  ResearchProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'research-processor-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ResearchProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt ResearchTaskQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${DataBucket.Arn}/*'
+
+  # Transport Queue Handler Role
+  TransportQueueHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'transport-queue-handler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TransportQueueHandlerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:GetQueueUrl
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt TransportTaskQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:HeadObject
+                  - s3:GetObject
+                Resource: !Sub '${DataBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub '${DataBucket.Arn}/*/status/*'
+
+  # Transport Processor Role
+  TransportProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'transport-processor-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TransportProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt TransportTaskQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${DataBucket.Arn}/*'
+
+  # Status Checker Role (shared)
+  StatusCheckerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'status-checker-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: StatusCheckerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub '${DataBucket.Arn}/*/status/*'
+
+  # ========== SQS ACCESS POLICIES ==========
+  ResearchQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref ResearchTaskQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !GetAtt ResearchTaskQueue.Arn
+
+  TransportQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref TransportTaskQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !GetAtt TransportTaskQueue.Arn
 
   # ResearchAgent Lambda Function
   ResearchAgentFunction:

@@ -25,6 +25,8 @@ COPY ResearchAgent/main.py \
     ResearchAgent/lambda_handler.py \
     ResearchAgent/singapore_onsite_carbon_config.py \
     ResearchAgent/singapore_onsite_carbon_score.py \
+    ResearchAgent/sqs_processor.py \
+    ResearchAgent/queue_handler.py \
     ${LAMBDA_TASK_ROOT}/
 
 # Set the Lambda handler
