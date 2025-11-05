@@ -347,55 +347,28 @@ jobs:
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
               AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
 
-      - name: Deploy SQS Infrastructure Stack
-        id: sqs-deploy
+
+      - name: Create S3 Folder Structure
+        id: create-s3-folders
+        if: steps.sam-deploy.outcome == 'success'
         run: |
-          echo "## SQS Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
-
-          # Deploy SQS stack
-          sam deploy \
-            --template-file sqs-template.yaml \
-            --stack-name research-agent-sqs-prod \
-            --region ${{ env.AWS_REGION }} \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              Environment=prod \
-              ImageTag=${{ github.sha }} \
-              GoogleMapsApiKey=${{ secrets.GOOGLE_MAPS_API_KEY }} \
-              OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
-              AnthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
-
-          echo "[OK] SQS stack deployed" >> $GITHUB_STEP_SUMMARY
-
-      - name: Configure Research Agent for SQS
-        id: configure-sqs
-        run: |
-          echo "## Research Agent SQS Configuration" >> $GITHUB_STEP_SUMMARY
-
-          # Get Queue URL from SQS stack outputs
-          QUEUE_URL=$(aws cloudformation describe-stacks \
-            --stack-name research-agent-sqs-prod \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Stacks[0].Outputs[?OutputKey==`QueueUrl`].OutputValue' \
-            --output text)
-
-          if [ -z "$QUEUE_URL" ]; then
-            echo "[ERROR] Failed to retrieve Queue URL" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          echo "Queue URL: \`$QUEUE_URL\`" >> $GITHUB_STEP_SUMMARY
-
-          # Create S3 folder structure
-          echo "Creating S3 folder structure..." >> $GITHUB_STEP_SUMMARY
+          echo "## S3 Folder Structure Setup" >> $GITHUB_STEP_SUMMARY
+          
+          # Get S3 bucket name from stack outputs
           BUCKET_NAME=$(aws cloudformation describe-stacks \
             --stack-name retrieval-agent-stack \
             --region ${{ env.AWS_REGION }} \
-            --query 'Stacks[0].Outputs[?OutputKey==`DataBucketName`].OutputValue' \
+            --query 'Stacks[0].Outputs[?OutputKey==`S3Bucket`].OutputValue' \
             --output text)
-
+          
+          if [ -z "$BUCKET_NAME" ]; then
+            echo "[ERROR] Failed to retrieve S3 bucket name" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          echo "S3 Bucket: \`$BUCKET_NAME\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Create folder structure
           for folder in active processed temp logs failed planner_agent planner_agent/status; do
             aws s3api put-object \
               --bucket $BUCKET_NAME \
@@ -403,41 +376,8 @@ jobs:
               --body /dev/null \
               --region ${{ env.AWS_REGION }} || true
           done
-
+          
           echo "[OK] S3 folder structure created" >> $GITHUB_STEP_SUMMARY
-
-          # Update research-agent-prod Lambda to use queue_handler
-          echo "Updating Lambda handler to queue_handler..."
-          aws lambda update-function-configuration \
-            --function-name research-agent-prod \
-            --environment "Variables={
-              S3_BUCKET=retrieval-agent-data-prod,
-              QUEUE_URL=$QUEUE_URL,
-              GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }},
-              OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},
-              ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-            }" \
-            --region ${{ env.AWS_REGION }}
-
-          # Wait for update to complete
-          aws lambda wait function-updated \
-            --function-name research-agent-prod \
-            --region ${{ env.AWS_REGION }}
-
-          # Switch to queue_handler
-          aws lambda update-function-configuration \
-            --function-name research-agent-prod \
-            --image-config '{"Command":["queue_handler.lambda_handler"]}' \
-            --region ${{ env.AWS_REGION }}
-
-          # Wait for handler update
-          aws lambda wait function-updated \
-            --function-name research-agent-prod \
-            --region ${{ env.AWS_REGION }}
-
-          echo "[OK] Research agent configured for SQS" >> $GITHUB_STEP_SUMMARY
-          echo "- Handler: \`queue_handler.lambda_handler\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Queue: \`$QUEUE_URL\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Show Stack Errors if Deploy Failed
         if: steps.sam-deploy.outcome == 'failure'
@@ -450,7 +390,7 @@ jobs:
             --output table >> $GITHUB_STEP_SUMMARY || true
 
       - name: Verify Lambda Functions Updated
-        if: steps.sam-deploy.outcome == 'success' && steps.configure-sqs.outcome == 'success'
+        if: steps.sam-deploy.outcome == 'success'
         run: |
           echo "## Lambda Update Verification" >> $GITHUB_STEP_SUMMARY
 
@@ -646,13 +586,6 @@ jobs:
             --query 'Stacks[0].Outputs' \
             --output table >> $GITHUB_STEP_SUMMARY
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### SQS Stack" >> $GITHUB_STEP_SUMMARY
-          aws cloudformation describe-stacks \
-            --stack-name research-agent-sqs-prod \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Stacks[0].Outputs' \
-            --output table >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "SQS stack outputs not available" >> $GITHUB_STEP_SUMMARY
 
       - name: Smoke test deployment
         if: steps.sam-deploy.outcome == 'success'
