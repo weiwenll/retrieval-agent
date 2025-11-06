@@ -506,19 +506,14 @@ class TransportSustainabilityAgent:
             "accessibility_needs": requirements.get("optional", {}).get("accessibility_needs")
         }
 
-        logger.info(f"Calculating day-by-day routes for {len(itinerary)} days with LLM optimization...")
+        logger.info(f"Calculating day-by-day routes for {len(itinerary)} days...")
 
         connection_id = 1
 
         for date, day_data in itinerary.items():
             logger.info(f"Processing day: {date}")
 
-            # Extract places for the day (morning, lunch, afternoon)
-            morning_item = day_data.get("morning", {}).get("item")
-            lunch_item = day_data.get("lunch", {}).get("item")
-            afternoon_item = day_data.get("afternoon", {}).get("item")
-
-            # Build sequence of places for the day (skip nulls)
+            # Build sequence of places for the day (skip nulls and empty arrays)
             sequence = []
 
             # Always start from accommodation
@@ -532,35 +527,37 @@ class TransportSustainabilityAgent:
                 "place_id": "accommodation"
             })
 
-            # Add morning place if not null
-            if morning_item:
-                morning_geo = morning_item.get("geo", {})
-                if morning_geo.get("latitude") and morning_geo.get("longitude"):
-                    sequence.append({
-                        "name": morning_item.get("name", "Unknown"),
-                        "location": morning_geo,
-                        "place_id": morning_item.get("place_id")
-                    })
+            # Dynamically iterate through all time periods in the day (morning, lunch, afternoon, etc.)
+            # Sort by time to ensure correct order
+            time_periods = []
+            for period_name, period_data in day_data.items():
+                if isinstance(period_data, dict) and "time" in period_data:
+                    time_periods.append((period_name, period_data))
 
-            # Add lunch place if not null
-            if lunch_item:
-                lunch_geo = lunch_item.get("geo", {})
-                if lunch_geo.get("latitude") and lunch_geo.get("longitude"):
-                    sequence.append({
-                        "name": lunch_item.get("name", "Unknown"),
-                        "location": lunch_geo,
-                        "place_id": lunch_item.get("place_id")
-                    })
+            # Sort by time
+            time_periods.sort(key=lambda x: x[1].get("time", "00:00"))
 
-            # Add afternoon place if not null
-            if afternoon_item:
-                afternoon_geo = afternoon_item.get("geo", {})
-                if afternoon_geo.get("latitude") and afternoon_geo.get("longitude"):
-                    sequence.append({
-                        "name": afternoon_item.get("name", "Unknown"),
-                        "location": afternoon_geo,
-                        "place_id": afternoon_item.get("place_id")
-                    })
+            logger.info(f"  Found {len(time_periods)} time periods for {date}: {[p[0] for p in time_periods]}")
+
+            # Add places from each time period
+            for period_name, period_data in time_periods:
+                items = period_data.get("items", [])
+
+                # Handle both array and single item cases
+                if not isinstance(items, list):
+                    items = [items] if items else []
+
+                # Process each item in the period (usually just one, but handle multiple)
+                for item in items:
+                    if item:  # Skip null/None items
+                        item_geo = item.get("geo", {})
+                        if item_geo.get("latitude") and item_geo.get("longitude"):
+                            sequence.append({
+                                "name": item.get("name", "Unknown"),
+                                "location": item_geo,
+                                "place_id": item.get("place_id")
+                            })
+                            logger.info(f"    Added {item.get('name')} from {period_name}")
 
             # Calculate routes for each leg (point to point)
             connections = []
@@ -712,334 +709,334 @@ class TransportSustainabilityAgent:
 
         return transport_modes
 
-    def optimize_daily_routes_with_llm(
-        self,
-        connections: List[Dict],
-        date: str,
-        user_preferences: Dict
-    ) -> Dict:
-        """
-        Use LLM to analyze all connections for a day and provide intelligent recommendations.
+    # def optimize_daily_routes_with_llm(
+#         self,
+#         connections: List[Dict],
+#         date: str,
+#         user_preferences: Dict
+#     ) -> Dict:
+#         """
+#         Use LLM to analyze all connections for a day and provide intelligent recommendations.
 
-        Args:
-            connections: List of connection dicts with transport modes
-            date: Date string (e.g., "2025-06-01")
-            user_preferences: User preferences from input (pace, budget, eco_preferences, etc.)
+#         Args:
+#             connections: List of connection dicts with transport modes
+#             date: Date string (e.g., "2025-06-01")
+#             user_preferences: User preferences from input (pace, budget, eco_preferences, etc.)
 
-        Returns:
-            Dict with:
-            - recommended_modes: List of recommended transport mode per connection
-            - rationale: Explanation for recommendations
-            - optimization_summary: Overall summary of the day's transport
-        """
-        if not connections:
-            return {
-                "recommended_modes": [],
-                "rationale": "No connections to optimize",
-                "optimization_summary": "No travel required for this day"
-            }
+#         Returns:
+#             Dict with:
+#             - recommended_modes: List of recommended transport mode per connection
+#             - rationale: Explanation for recommendations
+#             - optimization_summary: Overall summary of the day's transport
+#         """
+#         if not connections:
+#             return {
+#                 "recommended_modes": [],
+#                 "rationale": "No connections to optimize",
+#                 "optimization_summary": "No travel required for this day"
+#             }
 
-        # Prepare data for LLM
-        connections_summary = []
-        for conn in connections:
-            modes_summary = []
-            for mode_data in conn.get("transport_modes", []):
-                modes_summary.append({
-                    "mode": mode_data["mode"],
-                    "distance_km": mode_data["distance_km"],
-                    "duration_minutes": mode_data["duration_minutes"],
-                    "cost_sgd": mode_data["cost_sgd"],
-                    "carbon_kg": mode_data["carbon_kg"]
-                })
+#         # Prepare data for LLM
+#         connections_summary = []
+#         for conn in connections:
+#             modes_summary = []
+#             for mode_data in conn.get("transport_modes", []):
+#                 modes_summary.append({
+#                     "mode": mode_data["mode"],
+#                     "distance_km": mode_data["distance_km"],
+#                     "duration_minutes": mode_data["duration_minutes"],
+#                     "cost_sgd": mode_data["cost_sgd"],
+#                     "carbon_kg": mode_data["carbon_kg"]
+#                 })
 
-            connections_summary.append({
-                "connection_id": conn["connection_id"],
-                "from": conn["from_place_name"],
-                "to": conn["to_place_name"],
-                "available_modes": modes_summary
-            })
+#             connections_summary.append({
+#                 "connection_id": conn["connection_id"],
+#                 "from": conn["from_place_name"],
+#                 "to": conn["to_place_name"],
+#                 "available_modes": modes_summary
+#             })
 
-        # Extract user preferences
-        pace = user_preferences.get("pace")
-        budget_sgd = user_preferences.get("budget_total_sgd")
-        eco_preferences = user_preferences.get("eco_preferences")
-        travelers = user_preferences.get("travelers")
-        adults = travelers.get("adults")
-        children = travelers.get("children")
+#         # Extract user preferences
+#         pace = user_preferences.get("pace")
+#         budget_sgd = user_preferences.get("budget_total_sgd")
+#         eco_preferences = user_preferences.get("eco_preferences")
+#         travelers = user_preferences.get("travelers")
+#         adults = travelers.get("adults")
+#         children = travelers.get("children")
 
-        prompt = f"""You are a Singapore travel optimization expert. Analyze this day's transport connections and recommend the best transport mode for each leg.
+#         prompt = f"""You are a Singapore travel optimization expert. Analyze this day's transport connections and recommend the best transport mode for each leg.
 
-**Date:** {date}
+# **Date:** {date}
 
-**Traveler Profile:**
-- Travel pace: {pace}
-- Budget: ${budget_sgd} SGD total
-- Eco-conscious: {eco_preferences}
-- Group: {adults} adult(s), {children} children
+# **Traveler Profile:**
+# - Travel pace: {pace}
+# - Budget: ${budget_sgd} SGD total
+# - Eco-conscious: {eco_preferences}
+# - Group: {adults} adult(s), {children} children
 
-**Connections for the day:**
-{json.dumps(connections_summary, indent=2)}
+# **Connections for the day:**
+# {json.dumps(connections_summary, indent=2)}
 
-**Your Task:**
-For each connection, recommend the BEST transport mode considering:
-1. Time efficiency (especially for {pace} pace)
-2. Cost effectiveness (total budget: ${budget_sgd})
-3. Carbon footprint ({'high priority' if eco_preferences == 'yes' else 'considered'})
-4. Family-friendliness ({'important' if children > 0 else 'not applicable'})
-5. Practicality (walking distance, transfers, comfort)
+# **Your Task:**
+# For each connection, recommend the BEST transport mode considering:
+# 1. Time efficiency (especially for {pace} pace)
+# 2. Cost effectiveness (total budget: ${budget_sgd})
+# 3. Carbon footprint ({'high priority' if eco_preferences == 'yes' else 'considered'})
+# 4. Family-friendliness ({'important' if children > 0 else 'not applicable'})
+# 5. Practicality (walking distance, transfers, comfort)
 
-**Output Format (JSON only, no markdown):**
-{{
-    "recommended_modes": [
-        {{
-            "connection_id": 1,
-            "recommended_mode": "walking",
-            "reason": "Short distance (0.9km), saves money, eco-friendly, good for {pace} pace"
-        }}
-    ],
-    "optimization_summary": "Brief summary of the day's transport strategy (2-3 sentences)",
-    "total_estimated_cost": 0.00,
-    "total_carbon_saved": 0.5,
-    "time_optimization_notes": "Any time-saving tips or warnings"
-}}
-"""
+# **Output Format (JSON only, no markdown):**
+# {{
+#     "recommended_modes": [
+#         {{
+#             "connection_id": 1,
+#             "recommended_mode": "walking",
+#             "reason": "Short distance (0.9km), saves money, eco-friendly, good for {pace} pace"
+#         }}
+#     ],
+#     "optimization_summary": "Brief summary of the day's transport strategy (2-3 sentences)",
+#     "total_estimated_cost": 0.00,
+#     "total_carbon_saved": 0.5,
+#     "time_optimization_notes": "Any time-saving tips or warnings"
+# }}
+# """
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.3,
-                messages=[
-                    {"role": "system", "content": "You are a Singapore travel transport optimization expert. Provide practical, cost-effective, and sustainable transport recommendations."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
+#         try:
+#             response = self.client.chat.completions.create(
+#                 model=self.model_name,
+#                 temperature=0.3,
+#                 messages=[
+#                     {"role": "system", "content": "You are a Singapore travel transport optimization expert. Provide practical, cost-effective, and sustainable transport recommendations."},
+#                     {"role": "user", "content": prompt}
+#                 ]
+#             )
 
-            llm_output = response.choices[0].message.content.strip()
+#             llm_output = response.choices[0].message.content.strip()
 
-            # Handle markdown-wrapped JSON
-            if '```json' in llm_output:
-                import re
-                pattern = r'```json\s*(.*?)\s*```'
-                match = re.search(pattern, llm_output, re.DOTALL)
-                if match:
-                    llm_output = match.group(1).strip()
-            elif llm_output.startswith('```') and llm_output.endswith('```'):
-                lines = llm_output.split('\n')
-                if lines[0].startswith('```'):
-                    lines = lines[1:]
-                if lines[-1] == '```':
-                    lines = lines[:-1]
-                llm_output = '\n'.join(lines).strip()
+#             # Handle markdown-wrapped JSON
+#             if '```json' in llm_output:
+#                 import re
+#                 pattern = r'```json\s*(.*?)\s*```'
+#                 match = re.search(pattern, llm_output, re.DOTALL)
+#                 if match:
+#                     llm_output = match.group(1).strip()
+#             elif llm_output.startswith('```') and llm_output.endswith('```'):
+#                 lines = llm_output.split('\n')
+#                 if lines[0].startswith('```'):
+#                     lines = lines[1:]
+#                 if lines[-1] == '```':
+#                     lines = lines[:-1]
+#                 llm_output = '\n'.join(lines).strip()
 
-            result = json.loads(llm_output)
-            logger.info(f"LLM route optimization completed for {date}")
-            return result
+#             result = json.loads(llm_output)
+#             logger.info(f"LLM route optimization completed for {date}")
+#             return result
 
-        except Exception as e:
-            logger.error(f"LLM optimization error for {date}: {e}")
-            return {
-                "recommended_modes": [],
-                "rationale": f"Optimization unavailable: {str(e)}",
-                "optimization_summary": "Unable to optimize routes"
-            }
+#         except Exception as e:
+#             logger.error(f"LLM optimization error for {date}: {e}")
+#             return {
+#                 "recommended_modes": [],
+#                 "rationale": f"Optimization unavailable: {str(e)}",
+#                 "optimization_summary": "Unable to optimize routes"
+#             }
 
-    def generate_personalized_recommendations(
-        self,
-        connections: List[Dict],
-        user_preferences: Dict,
-        time_of_day: str = "morning"
-    ) -> List[str]:
-        """
-        Generate personalized transport recommendations based on context.
+#     def generate_personalized_recommendations(
+#         self,
+#         connections: List[Dict],
+#         user_preferences: Dict,
+#         time_of_day: str = "morning"
+#     ) -> List[str]:
+#         """
+#         Generate personalized transport recommendations based on context.
 
-        Args:
-            connections: List of connection dicts
-            user_preferences: User preferences
-            time_of_day: "morning", "afternoon", "evening"
+#         Args:
+#             connections: List of connection dicts
+#             user_preferences: User preferences
+#             time_of_day: "morning", "afternoon", "evening"
 
-        Returns:
-            List of contextual recommendation strings
-        """
-        if not connections:
-            return []
+#         Returns:
+#             List of contextual recommendation strings
+#         """
+#         if not connections:
+#             return []
 
-        # Extract key preferences
-        travelers = user_preferences.get("travelers", {})
-        children = travelers.get("children", 0)
-        accessibility = user_preferences.get("accessibility_needs", "no_preference")
+#         # Extract key preferences
+#         travelers = user_preferences.get("travelers", {})
+#         children = travelers.get("children", 0)
+#         accessibility = user_preferences.get("accessibility_needs", "no_preference")
 
-        prompt = f"""You are a Singapore travel expert. Provide 3-5 SHORT, practical transport tips for these travelers.
+#         prompt = f"""You are a Singapore travel expert. Provide 3-5 SHORT, practical transport tips for these travelers.
 
-**Context:**
-- Time: {time_of_day}
-- Travelers: {travelers.get('adults', 1)} adult(s), {children} children
-- Accessibility: {accessibility}
-- Total connections today: {len(connections)}
+# **Context:**
+# - Time: {time_of_day}
+# - Travelers: {travelers.get('adults', 1)} adult(s), {children} children
+# - Accessibility: {accessibility}
+# - Total connections today: {len(connections)}
 
-**Provide practical tips like:**
-- "Avoid rush hour (7-9 AM, 5-7 PM) for smoother MRT travel"
-- "Book GrabCar in advance during afternoon peak hours"
-- "Bring an umbrella - afternoon rain is common in Singapore"
-- "MRT stations have elevators - good for families with strollers"
-- "Walking between close attractions saves time vs. waiting for transport"
+# **Provide practical tips like:**
+# - "Avoid rush hour (7-9 AM, 5-7 PM) for smoother MRT travel"
+# - "Book GrabCar in advance during afternoon peak hours"
+# - "Bring an umbrella - afternoon rain is common in Singapore"
+# - "MRT stations have elevators - good for families with strollers"
+# - "Walking between close attractions saves time vs. waiting for transport"
 
-**Output (JSON array of strings, 3-5 tips):**
-["tip 1", "tip 2", "tip 3"]
-"""
+# **Output (JSON array of strings, 3-5 tips):**
+# ["tip 1", "tip 2", "tip 3"]
+# """
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.4,
-                messages=[
-                    {"role": "system", "content": "You are a practical Singapore travel advisor. Give SHORT, actionable tips."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
+#         try:
+#             response = self.client.chat.completions.create(
+#                 model=self.model_name,
+#                 temperature=0.4,
+#                 messages=[
+#                     {"role": "system", "content": "You are a practical Singapore travel advisor. Give SHORT, actionable tips."},
+#                     {"role": "user", "content": prompt}
+#                 ]
+#             )
 
-            llm_output = response.choices[0].message.content.strip()
+#             llm_output = response.choices[0].message.content.strip()
 
-            # Handle markdown-wrapped JSON
-            if '```json' in llm_output:
-                import re
-                pattern = r'```json\s*(.*?)\s*```'
-                match = re.search(pattern, llm_output, re.DOTALL)
-                if match:
-                    llm_output = match.group(1).strip()
-            elif llm_output.startswith('```') and llm_output.endswith('```'):
-                lines = llm_output.split('\n')
-                lines = [l for l in lines if not l.strip().startswith('```')]
-                llm_output = '\n'.join(lines).strip()
+#             # Handle markdown-wrapped JSON
+#             if '```json' in llm_output:
+#                 import re
+#                 pattern = r'```json\s*(.*?)\s*```'
+#                 match = re.search(pattern, llm_output, re.DOTALL)
+#                 if match:
+#                     llm_output = match.group(1).strip()
+#             elif llm_output.startswith('```') and llm_output.endswith('```'):
+#                 lines = llm_output.split('\n')
+#                 lines = [l for l in lines if not l.strip().startswith('```')]
+#                 llm_output = '\n'.join(lines).strip()
 
-            tips = json.loads(llm_output)
-            logger.info(f"Generated {len(tips)} personalized recommendations")
-            return tips
+#             tips = json.loads(llm_output)
+#             logger.info(f"Generated {len(tips)} personalized recommendations")
+#             return tips
 
-        except Exception as e:
-            logger.error(f"Error generating personalized recommendations: {e}")
-            return ["Plan ahead for smoother travel", "Check MRT schedules before departure"]
+#         except Exception as e:
+#             logger.error(f"Error generating personalized recommendations: {e}")
+#             return ["Plan ahead for smoother travel", "Check MRT schedules before departure"]
 
-    def generate_carbon_insights(
-        self,
-        connections: List[Dict],
-        eco_preference: str = "no"
-    ) -> Dict:
-        """
-        Generate carbon-conscious travel insights and recommendations.
+#     def generate_carbon_insights(
+#         self,
+#         connections: List[Dict],
+#         eco_preference: str = "no"
+#     ) -> Dict:
+#         """
+#         Generate carbon-conscious travel insights and recommendations.
 
-        Args:
-            connections: List of connection dicts with carbon data
-            eco_preference: User's eco preference ("yes", "no")
+#         Args:
+#             connections: List of connection dicts with carbon data
+#             eco_preference: User's eco preference ("yes", "no")
 
-        Returns:
-            Dict with carbon insights and eco-friendly suggestions
-        """
-        if not connections:
-            return {
-                "total_carbon_kg": 0.0,
-                "eco_insights": [],
-                "carbon_savings_opportunities": []
-            }
+#         Returns:
+#             Dict with carbon insights and eco-friendly suggestions
+#         """
+#         if not connections:
+#             return {
+#                 "total_carbon_kg": 0.0,
+#                 "eco_insights": [],
+#                 "carbon_savings_opportunities": []
+#             }
 
-        # Calculate total carbon for current recommendations
-        total_carbon = 0.0
-        carbon_by_mode = {}
+#         # Calculate total carbon for current recommendations
+#         total_carbon = 0.0
+#         carbon_by_mode = {}
 
-        for conn in connections:
-            for mode_data in conn.get("transport_modes", []):
-                mode = mode_data["mode"]
-                carbon = mode_data["carbon_kg"]
+#         for conn in connections:
+#             for mode_data in conn.get("transport_modes", []):
+#                 mode = mode_data["mode"]
+#                 carbon = mode_data["carbon_kg"]
 
-                if mode not in carbon_by_mode:
-                    carbon_by_mode[mode] = {"count": 0, "total_carbon": 0.0, "total_distance": 0.0}
+#                 if mode not in carbon_by_mode:
+#                     carbon_by_mode[mode] = {"count": 0, "total_carbon": 0.0, "total_distance": 0.0}
 
-                carbon_by_mode[mode]["count"] += 1
-                carbon_by_mode[mode]["total_carbon"] += carbon
-                carbon_by_mode[mode]["total_distance"] += mode_data["distance_km"]
+#                 carbon_by_mode[mode]["count"] += 1
+#                 carbon_by_mode[mode]["total_carbon"] += carbon
+#                 carbon_by_mode[mode]["total_distance"] += mode_data["distance_km"]
 
-        # Prepare summary for LLM
-        connections_carbon = []
-        for conn in connections:
-            modes_carbon = []
-            for mode_data in conn.get("transport_modes", []):
-                modes_carbon.append({
-                    "mode": mode_data["mode"],
-                    "carbon_kg": mode_data["carbon_kg"],
-                    "distance_km": mode_data["distance_km"]
-                })
+#         # Prepare summary for LLM
+#         connections_carbon = []
+#         for conn in connections:
+#             modes_carbon = []
+#             for mode_data in conn.get("transport_modes", []):
+#                 modes_carbon.append({
+#                     "mode": mode_data["mode"],
+#                     "carbon_kg": mode_data["carbon_kg"],
+#                     "distance_km": mode_data["distance_km"]
+#                 })
 
-            connections_carbon.append({
-                "from": conn["from_place_name"],
-                "to": conn["to_place_name"],
-                "modes": modes_carbon
-            })
+#             connections_carbon.append({
+#                 "from": conn["from_place_name"],
+#                 "to": conn["to_place_name"],
+#                 "modes": modes_carbon
+#             })
 
-        prompt = f"""You are a carbon footprint expert for Singapore travel. Analyze these transport connections and provide eco-friendly insights.
+#         prompt = f"""You are a carbon footprint expert for Singapore travel. Analyze these transport connections and provide eco-friendly insights.
 
-**Eco-conscious traveler:** {eco_preference}
+# **Eco-conscious traveler:** {eco_preference}
 
-**Today's connections:**
-{json.dumps(connections_carbon, indent=2)}
+# **Today's connections:**
+# {json.dumps(connections_carbon, indent=2)}
 
-**Provide:**
-1. Total carbon footprint estimate (sum lowest-carbon option for each leg)
-2. 2-3 specific eco-friendly suggestions (e.g., "Walk 0.9km instead of taxi to save 0.25kg CO₂")
-3. Carbon comparison (e.g., "Taking MRT instead of taxi all day saves 2.1kg CO₂ (equivalent to X)")
+# **Provide:**
+# 1. Total carbon footprint estimate (sum lowest-carbon option for each leg)
+# 2. 2-3 specific eco-friendly suggestions (e.g., "Walk 0.9km instead of taxi to save 0.25kg CO₂")
+# 3. Carbon comparison (e.g., "Taking MRT instead of taxi all day saves 2.1kg CO₂ (equivalent to X)")
 
-**Output (JSON only):**
-{{
-    "total_carbon_kg": 0.5,
-    "eco_insights": [
-        "Walking short distances (<1km) eliminates 0.3kg CO₂ today",
-        "Public transport reduces carbon by 60% vs. taxis"
-    ],
-    "carbon_savings_opportunities": [
-        {{
-        "connection": "Accommodation → Morning place",
-        "suggestion": "Walk instead of taxi",
-        "carbon_saved_kg": 0.25,
-        "time_added_minutes": 8
-        }}
-    ],
-    "carbon_equivalent": "Today's eco-friendly choices save carbon equal to charging 50 smartphones"
-}}
-"""
+# **Output (JSON only):**
+# {{
+#     "total_carbon_kg": 0.5,
+#     "eco_insights": [
+#         "Walking short distances (<1km) eliminates 0.3kg CO₂ today",
+#         "Public transport reduces carbon by 60% vs. taxis"
+#     ],
+#     "carbon_savings_opportunities": [
+#         {{
+#         "connection": "Accommodation → Morning place",
+#         "suggestion": "Walk instead of taxi",
+#         "carbon_saved_kg": 0.25,
+#         "time_added_minutes": 8
+#         }}
+#     ],
+#     "carbon_equivalent": "Today's eco-friendly choices save carbon equal to charging 50 smartphones"
+# }}
+# """
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.3,
-                messages=[
-                    {"role": "system", "content": "You are a carbon footprint expert. Provide accurate, practical eco-friendly travel advice."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
+#         try:
+#             response = self.client.chat.completions.create(
+#                 model=self.model_name,
+#                 temperature=0.3,
+#                 messages=[
+#                     {"role": "system", "content": "You are a carbon footprint expert. Provide accurate, practical eco-friendly travel advice."},
+#                     {"role": "user", "content": prompt}
+#                 ]
+#             )
 
-            llm_output = response.choices[0].message.content.strip()
+#             llm_output = response.choices[0].message.content.strip()
 
-            # Handle markdown-wrapped JSON
-            if '```json' in llm_output:
-                import re
-                pattern = r'```json\s*(.*?)\s*```'
-                match = re.search(pattern, llm_output, re.DOTALL)
-                if match:
-                    llm_output = match.group(1).strip()
-            elif llm_output.startswith('```') and llm_output.endswith('```'):
-                lines = llm_output.split('\n')
-                lines = [l for l in lines if not l.strip().startswith('```')]
-                llm_output = '\n'.join(lines).strip()
+#             # Handle markdown-wrapped JSON
+#             if '```json' in llm_output:
+#                 import re
+#                 pattern = r'```json\s*(.*?)\s*```'
+#                 match = re.search(pattern, llm_output, re.DOTALL)
+#                 if match:
+#                     llm_output = match.group(1).strip()
+#             elif llm_output.startswith('```') and llm_output.endswith('```'):
+#                 lines = llm_output.split('\n')
+#                 lines = [l for l in lines if not l.strip().startswith('```')]
+#                 llm_output = '\n'.join(lines).strip()
 
-            result = json.loads(llm_output)
-            logger.info(f"Generated carbon insights")
-            return result
+#             result = json.loads(llm_output)
+#             logger.info(f"Generated carbon insights")
+#             return result
 
-        except Exception as e:
-            logger.error(f"Error generating carbon insights: {e}")
-            return {
-                "total_carbon_kg": 0.0,
-                "eco_insights": ["Consider walking or public transport for short distances"],
-                "carbon_savings_opportunities": []
-            }
+#         except Exception as e:
+#             logger.error(f"Error generating carbon insights: {e}")
+#             return {
+#                 "total_carbon_kg": 0.0,
+#                 "eco_insights": ["Consider walking or public transport for short distances"],
+#                 "carbon_savings_opportunities": []
+#             }
 
     def format_output(self, transport_data: Dict, places_data: Dict) -> Dict:
         """
