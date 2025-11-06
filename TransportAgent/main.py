@@ -1088,7 +1088,7 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
             places_data = json.load(f)
     except Exception as e:
         logger.error(f"Failed to load input file: {e}")
-        return
+        return {'error': f"Failed to load input file: {str(e)}"}
 
     # Extract accommodation location from input file if not provided
     if accommodation_location is None:
@@ -1125,6 +1125,7 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
         logger.info(f"Successfully saved output")
     except Exception as e:
         logger.error(f"Failed to save output: {e}")
+        return {'error': f"Failed to save output: {str(e)}"}
 
     # Dump raw Google Maps responses
     raw_output_file = output_file.replace(".json", "_raw_responses.json")
@@ -1133,16 +1134,24 @@ def process_transport_data(input_file: str, output_file: str, accommodation_loca
     # Calculate total connections
     total_connections = sum(len(day_data.get("connections", [])) for day_data in transport_data.values())
 
-    # Print summary
-    print(f"\n{'='*80}")
-    print(f"TRANSPORT PROCESSING COMPLETE")
-    print(f"{'='*80}")
-    print(f"Days processed: {len(transport_data)}")
-    print(f"Total routes calculated: {total_connections}")
-    print(f"Processing time: {elapsed_time:.2f}s")
-    print(f"Output saved to: {output_file}")
-    print(f"Raw Google Maps responses: {raw_output_file}")
-    print(f"{'='*80}\n")
+    # Print summary if not running in Lambda
+    if not os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+        print(f"\n{'='*80}")
+        print(f"TRANSPORT PROCESSING COMPLETE")
+        print(f"{'='*80}")
+        print(f"Days processed: {len(transport_data)}")
+        print(f"Total routes calculated: {total_connections}")
+        print(f"Processing time: {elapsed_time:.2f}s")
+        print(f"Output saved to: {output_file}")
+        print(f"Raw Google Maps responses: {raw_output_file}")
+        print(f"{'='*80}\n")
+
+    # Return success with metadata
+    return {
+        'days_processed': len(transport_data),
+        'total_connections': total_connections,
+        'processing_time_seconds': elapsed_time
+    }
 
 
 # Main execution
