@@ -8,8 +8,9 @@ import os
 import logging
 import boto3
 import uuid
+import time
 from datetime import datetime
-from shared_utils import write_status, log_structured, normalize_filename
+from shared_utils import write_status, log_structured, normalize_filename, check_processed_result
 
 # Configure logging
 logger = logging.getLogger()
@@ -148,10 +149,58 @@ def lambda_handler(event, context):
             # Log error but don't fail the request
             logger.warning(f"Failed to write status to S3 (non-critical): {status_error}")
 
-        # Return 202 Accepted immediately
         # Normalize filename for status location (same logic as write_status)
         status_filename = normalize_filename(input_key)
 
+        # Poll for quick completion (TransportAgent typically completes in ~7s)
+        # Wait up to 20 seconds, checking every 2 seconds
+        max_wait_time = 20  # seconds (API Gateway has 29s timeout)
+        poll_interval = 2   # seconds
+        elapsed = 0
+
+        logger.info(f"Polling for result completion (max {max_wait_time}s)...")
+
+        while elapsed < max_wait_time:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+            logger.info(f"Poll attempt at {elapsed}s for {status_filename}")
+
+            # Check if result is ready
+            try:
+                result = check_processed_result(
+                    bucket_name=bucket_name,
+                    filename=status_filename,
+                    agent_type='TransportAgent'
+                )
+
+                if result:
+                    logger.info(f"✓ Result ready after {elapsed}s! Returning 200 with full result")
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({
+                            'status': 'completed',
+                            'message': f'Transport task completed in {elapsed}s',
+                            'task_id': task_id,
+                            'session_id': session_id,
+                            'filename': status_filename,
+                            'completed_in_seconds': elapsed,
+                            'started_at': result.get('started_at'),
+                            'completed_at': result.get('completed_at'),
+                            'output_location': result.get('output_location'),
+                            'result': result.get('result')
+                        })
+                    }
+            except Exception as poll_error:
+                logger.warning(f"Polling error at {elapsed}s: {poll_error}")
+                # Continue polling despite errors
+
+        # Polling timeout - return 202 Accepted
+        logger.info(f"⏱ Polling timeout after {max_wait_time}s, returning 202 Accepted")
         return {
             'statusCode': 202,
             'headers': {
@@ -160,12 +209,15 @@ def lambda_handler(event, context):
             },
             'body': json.dumps({
                 'status': 'accepted',
-                'message': 'Transport task queued successfully',
+                'message': 'Transport task queued successfully (still processing)',
                 'task_id': task_id,
                 'session_id': session_id,
+                'filename': status_filename,
                 'sqs_message_id': response['MessageId'],
+                'status_check_url': f'/transport?filename={status_filename}',
                 'status_location': f"s3://{bucket_name}/transport_agent/status/{status_filename}",
-                'estimated_completion': 'within 15 minutes'
+                'estimated_completion': 'within 15 minutes',
+                'note': f'Polled for {max_wait_time}s but task still processing. Use GET /transport?filename={status_filename} to check status.'
             })
         }
 
