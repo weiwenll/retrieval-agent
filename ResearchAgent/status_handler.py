@@ -26,7 +26,7 @@ def lambda_handler(event, context):
     Check status of research task with enhanced logic.
 
     Expected query parameters:
-    - session: Session ID (e.g., 'f312ea72') - REQUIRED
+    - filename: Full filename (e.g., '20251031T003447_f312ea72.json') - REQUIRED
     - bucket_name: S3 bucket name (default: 'iss-travel-planner')
 
     Workflow:
@@ -42,11 +42,11 @@ def lambda_handler(event, context):
         # Parse query string parameters (GET request)
         query_params = event.get('queryStringParameters') or {}
 
-        session_id = query_params.get('session', '').strip()
+        filename = query_params.get('filename', '').strip()
         bucket_name = query_params.get('bucket_name', 'iss-travel-planner').strip()
 
         # Validate required parameters
-        if not session_id:
+        if not filename:
             return {
                 'statusCode': 400,
                 'headers': {
@@ -54,23 +54,28 @@ def lambda_handler(event, context):
                     'Access-Control-Allow-Origin': '*'
                 },
                 'body': json.dumps({
-                    'error': 'Missing required parameter: session'
+                    'error': 'Missing required parameter: filename'
                 })
             }
+
+        # Extract session_id from filename for response
+        session_id = filename.replace('.json', '').split('_')[-1]
 
         # Step 1: Check status file first - if completed, get full result
         processed_result = check_processed_result(
             bucket_name=bucket_name,
-            session_id=session_id,
+            filename=filename,
             agent_type='ResearchAgent'
         )
 
         if processed_result:
-            logger.info(f"Found completed result for session {session_id}")
+            logger.info(f"Found completed result for filename {filename}")
             # Case 1: Completed - return full result with processed data
             response_data = {
                 'status': 'completed',
                 'session_id': session_id,
+                'filename': filename,
+                'started_at': processed_result.get('started_at'),
                 'completed_at': processed_result.get('completed_at'),
                 'output_location': processed_result.get('output_location'),
                 'result': processed_result.get('result')
@@ -87,7 +92,7 @@ def lambda_handler(event, context):
         # Step 2: Check status file (job in progress)
         status_data = get_status(
             bucket_name=bucket_name,
-            session_id=session_id,
+            filename=filename,
             agent_type='ResearchAgent'
         )
 
@@ -123,10 +128,11 @@ def lambda_handler(event, context):
                     logger.error(f"Error parsing timestamp: {e}")
 
             # Case 2: Still Processing - return clean processing status
-            logger.info(f"Job in progress for session {session_id}")
+            logger.info(f"Job in progress for filename {filename}")
             response_data = {
                 'status': status_data.get('status', 'processing'),
                 'session_id': session_id,
+                'filename': filename,
                 'started_at': status_data.get('timestamp') or status_data.get('started_at'),
                 'agent': status_data.get('agent', 'ResearchAgent')
             }
@@ -145,7 +151,7 @@ def lambda_handler(event, context):
             }
 
         # Case 3: Not Found - neither processed nor status file found
-        logger.info(f"No job found for session {session_id}")
+        logger.info(f"No job found for filename {filename}")
         return {
             'statusCode': 404,
             'headers': {
@@ -155,7 +161,8 @@ def lambda_handler(event, context):
             'body': json.dumps({
                 'status': 'not_found',
                 'session_id': session_id,
-                'message': 'No job found with this session ID'
+                'filename': filename,
+                'message': 'No job found with this filename'
             })
         }
 

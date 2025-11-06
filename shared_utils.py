@@ -138,13 +138,13 @@ def write_status(bucket_name: str, filename: str, status: str, **kwargs):
         logger.error(f"Failed to write status for {filename}: {e}")
 
 
-def get_status(bucket_name: str, session_id: str, agent_type: str):
+def get_status(bucket_name: str, filename: str, agent_type: str):
     """
-    Get processing status from S3 by searching for files with session_id in name.
+    Get processing status from S3 by direct filename lookup.
 
     Args:
         bucket_name: S3 bucket name
-        session_id: Session ID (e.g., 'f312ea72')
+        filename: Full filename (e.g., '20251031T003447_f312ea72.json')
         agent_type: Agent type ('ResearchAgent' or 'TransportAgent') - REQUIRED
 
     Returns:
@@ -155,30 +155,19 @@ def get_status(bucket_name: str, session_id: str, agent_type: str):
         return None
 
     status_prefix = AGENT_PREFIXES[agent_type]['status']
+    status_key = f"{status_prefix}{filename}"
 
     try:
-        # List all files in status folder
-        list_response = s3_client.list_objects_v2(
-            Bucket=bucket_name,
-            Prefix=status_prefix,
-            MaxKeys=100
-        )
-
-        if 'Contents' not in list_response:
+        response = s3_client.get_object(Bucket=bucket_name, Key=status_key)
+        status_data = json.loads(response['Body'].read())
+        return status_data
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
             return None
-
-        # Find file with session_id in the name
-        for obj in list_response['Contents']:
-            filename = os.path.basename(obj['Key'])
-            if session_id in filename:
-                # Found the status file, read and return it
-                response = s3_client.get_object(Bucket=bucket_name, Key=obj['Key'])
-                status_data = json.loads(response['Body'].read())
-                return status_data
-
-        return None
+        logger.error(f"Failed to get status for {filename}: {e}")
+        raise
     except Exception as e:
-        logger.error(f"Failed to get status for session {session_id}: {e}")
+        logger.error(f"Failed to get status for {filename}: {e}")
         return None
 
 
@@ -201,18 +190,18 @@ def delete_status(bucket_name: str, session_id: str, agent_type: str):
     return True
 
 
-def check_processed_result(bucket_name: str, session_id: str, agent_type: str):
+def check_processed_result(bucket_name: str, filename: str, agent_type: str):
     """
-    Check if processed result exists for the session.
+    Check if processed result exists for the filename.
 
     New logic:
-    1. Check status file first (in /status folder)
+    1. Check status file first (in /status folder) by direct filename lookup
     2. If status == "completed" with output_key, fetch result from /processed
     3. Return combined response with status metadata + result data
 
     Args:
         bucket_name: S3 bucket name
-        session_id: Session ID (e.g., 'f312ea72')
+        filename: Full filename (e.g., '20251031T003447_f312ea72.json')
         agent_type: Agent type ('ResearchAgent' or 'TransportAgent') - REQUIRED
 
     Returns:
@@ -223,55 +212,44 @@ def check_processed_result(bucket_name: str, session_id: str, agent_type: str):
         return None
 
     status_prefix = AGENT_PREFIXES[agent_type]['status']
-    output_prefix = AGENT_PREFIXES[agent_type]['output']
+    status_key = f"{status_prefix}{filename}"
+
+    # Extract session_id from filename for response
+    session_id = filename.replace('.json', '').split('_')[-1]
 
     try:
-        # Step 1: Check status file first
-        list_response = s3_client.list_objects_v2(
-            Bucket=bucket_name,
-            Prefix=status_prefix,
-            MaxKeys=100
-        )
+        # Step 1: Read status file directly by filename
+        try:
+            response = s3_client.get_object(Bucket=bucket_name, Key=status_key)
+            status_data = json.loads(response['Body'].read())
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            raise
 
-        if 'Contents' not in list_response:
-            return None
-
-        # Find status file with session_id in the name
-        status_file_key = None
-        for obj in list_response['Contents']:
-            filename = os.path.basename(obj['Key'])
-            if session_id in filename:
-                status_file_key = obj['Key']
-                break
-
-        if not status_file_key:
-            return None
-
-        # Step 2: Read status file
-        response = s3_client.get_object(Bucket=bucket_name, Key=status_file_key)
-        status_data = json.loads(response['Body'].read())
-
-        # Step 3: Check if status is "completed"
+        # Step 2: Check if status is "completed"
         if status_data.get('status') != 'completed':
             return None
 
-        # Step 4: Get output_key from status
+        # Step 3: Get output_key from status
         output_key = status_data.get('output_key')
         if not output_key:
-            logger.warning(f"Status is completed but no output_key found for session {session_id}")
+            logger.warning(f"Status is completed but no output_key found for {filename}")
             return None
 
-        # Step 5: Fetch result from /processed folder
+        # Step 4: Fetch result from /processed folder
         try:
             result_response = s3_client.get_object(Bucket=bucket_name, Key=output_key)
             result_data = json.loads(result_response['Body'].read())
 
-            # Step 6: Return combined response
+            # Step 5: Return combined response
             return {
                 'status': 'completed',
                 'session_id': session_id,
+                'filename': filename,
                 'output_key': output_key,
                 'output_location': status_data.get('output_location', f"s3://{bucket_name}/{output_key}"),
+                'started_at': status_data.get('started_at'),
                 'completed_at': status_data.get('completed_at'),
                 'result': result_data
             }
@@ -280,6 +258,6 @@ def check_processed_result(bucket_name: str, session_id: str, agent_type: str):
             return None
 
     except Exception as e:
-        logger.error(f"Failed to check processed result for {session_id}: {e}")
+        logger.error(f"Failed to check processed result for {filename}: {e}")
         return None
 

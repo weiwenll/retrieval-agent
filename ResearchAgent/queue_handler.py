@@ -131,13 +131,18 @@ def lambda_handler(event, context):
 
         # Write initial status to S3 (non-blocking, don't fail if this errors)
         try:
+            # Extract filename from input_key for status tracking
+            filename = os.path.basename(input_key)
+
             write_status(
-                bucket_name, session_id, 'queued',
+                bucket_name, filename, 'queued',
+                session_id=session_id,
                 task_id=task_id,
                 input_key=input_key,
                 sender_agent=sender_agent,
                 created_at=datetime.utcnow().isoformat(),
-                sqs_message_id=response['MessageId']
+                sqs_message_id=response['MessageId'],
+                agent_type='ResearchAgent'
             )
         except Exception as status_error:
             # Log error but don't fail the request
