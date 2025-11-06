@@ -207,8 +207,10 @@ def check_processed_result(bucket_name: str, filename: str, agent_type: str):
     Returns:
         dict with status + result data if completed, None otherwise
     """
+    logger.info(f"[check_processed_result] Starting for filename: {filename}, agent_type: {agent_type}")
+
     if not agent_type or agent_type not in AGENT_PREFIXES:
-        logger.error(f"Invalid agent_type: {agent_type}. Must be 'ResearchAgent' or 'TransportAgent'")
+        logger.error(f"[check_processed_result] Invalid agent_type: {agent_type}. Must be 'ResearchAgent' or 'TransportAgent'")
         return None
 
     status_prefix = AGENT_PREFIXES[agent_type]['status']
@@ -216,34 +218,63 @@ def check_processed_result(bucket_name: str, filename: str, agent_type: str):
 
     # Extract session_id from filename for response
     session_id = filename.replace('.json', '').split('_')[-1]
+    logger.info(f"[check_processed_result] Session ID: {session_id}, Status key: {status_key}")
 
     try:
         # Step 1: Read status file directly by filename
+        logger.info(f"[check_processed_result] Step 1: Reading status file from S3: {status_key}")
         try:
             response = s3_client.get_object(Bucket=bucket_name, Key=status_key)
-            status_data = json.loads(response['Body'].read())
+            status_content = response['Body'].read()
+            logger.info(f"[check_processed_result] Status file found, size: {len(status_content)} bytes")
+
+            status_data = json.loads(status_content)
+            logger.info(f"[check_processed_result] Status data parsed, keys: {list(status_data.keys())}")
+            logger.info(f"[check_processed_result] Status value: {status_data.get('status')}")
         except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                logger.info(f"[check_processed_result] Status file not found: {status_key}")
                 return None
+            logger.error(f"[check_processed_result] S3 ClientError accessing status file: {error_code} - {str(e)}")
             raise
 
         # Step 2: Check if status is "completed"
+        logger.info(f"[check_processed_result] Step 2: Checking if status is 'completed'")
         if status_data.get('status') != 'completed':
+            logger.info(f"[check_processed_result] Status is '{status_data.get('status')}', not 'completed'. Returning None.")
             return None
+        logger.info(f"[check_processed_result] Status is 'completed' ✓")
 
         # Step 3: Get output_key from status
+        logger.info(f"[check_processed_result] Step 3: Getting output_key from status data")
         output_key = status_data.get('output_key')
         if not output_key:
-            logger.warning(f"Status is completed but no output_key found for {filename}")
+            logger.warning(f"[check_processed_result] Status is completed but no output_key found for {filename}")
+            logger.warning(f"[check_processed_result] Status data keys: {list(status_data.keys())}")
             return None
+        logger.info(f"[check_processed_result] Output key found: {output_key}")
 
         # Step 4: Fetch result from /processed folder
+        logger.info(f"[check_processed_result] Step 4: Fetching result file from S3: {output_key}")
         try:
             result_response = s3_client.get_object(Bucket=bucket_name, Key=output_key)
-            result_data = json.loads(result_response['Body'].read())
+            result_content = result_response['Body'].read()
+            logger.info(f"[check_processed_result] Result file found, size: {len(result_content)} bytes")
+
+            if not result_content.strip():
+                logger.warning(f"[check_processed_result] Result file is empty!")
+                return None
+
+            result_data = json.loads(result_content)
+            logger.info(f"[check_processed_result] Result data parsed successfully")
+            logger.info(f"[check_processed_result] Result data type: {type(result_data).__name__}")
+            if isinstance(result_data, dict):
+                logger.info(f"[check_processed_result] Result data keys: {list(result_data.keys())}")
 
             # Step 5: Return combined response
-            return {
+            logger.info(f"[check_processed_result] Step 5: Building combined response")
+            combined_response = {
                 'status': 'completed',
                 'session_id': session_id,
                 'filename': filename,
@@ -253,11 +284,28 @@ def check_processed_result(bucket_name: str, filename: str, agent_type: str):
                 'completed_at': status_data.get('completed_at'),
                 'result': result_data
             }
+            logger.info(f"[check_processed_result] SUCCESS: Returning combined response with result data")
+            return combined_response
+
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            logger.error(f"[check_processed_result] S3 ClientError fetching result from {output_key}: {error_code} - {str(e)}")
+            if error_code == 'NoSuchKey':
+                logger.error(f"[check_processed_result] Result file does not exist at: {output_key}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"[check_processed_result] JSON decode error for result file: {str(e)}")
+            logger.error(f"[check_processed_result] First 200 chars of content: {result_content[:200] if result_content else 'empty'}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to fetch result from {output_key}: {e}")
+            logger.error(f"[check_processed_result] Unexpected error fetching result from {output_key}: {type(e).__name__} - {str(e)}")
+            import traceback
+            logger.error(f"[check_processed_result] Traceback: {traceback.format_exc()}")
             return None
 
     except Exception as e:
-        logger.error(f"Failed to check processed result for {filename}: {e}")
+        logger.error(f"[check_processed_result] Unexpected error in outer try block: {type(e).__name__} - {str(e)}")
+        import traceback
+        logger.error(f"[check_processed_result] Traceback: {traceback.format_exc()}")
         return None
 
