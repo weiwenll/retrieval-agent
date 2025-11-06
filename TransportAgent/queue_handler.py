@@ -153,8 +153,8 @@ def lambda_handler(event, context):
         status_filename = normalize_filename(input_key)
 
         # Poll for quick completion (TransportAgent typically completes in ~7s)
-        # Wait up to 20 seconds, checking every 2 seconds
-        max_wait_time = 20  # seconds (API Gateway has 29s timeout)
+        # Wait up to 27 seconds, checking every 2 seconds
+        max_wait_time = 27  # seconds (API Gateway has 29s timeout, 2s buffer for Lambda overhead)
         poll_interval = 2   # seconds
         elapsed = 0
 
