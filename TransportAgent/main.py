@@ -590,46 +590,46 @@ class TransportSustainabilityAgent:
                 connections.append(connection)
                 connection_id += 1
 
-            # === LLM INTEGRATION ===
-            # 1. Intelligent Route Optimization
-            logger.info(f"  Generating LLM route optimization for {date}...")
-            route_optimization = self.optimize_daily_routes_with_llm(
-                connections, date, user_preferences
-            )
+            # === LLM INTEGRATION === (COMMENTED OUT)
+            # # 1. Intelligent Route Optimization
+            # logger.info(f"  Generating LLM route optimization for {date}...")
+            # route_optimization = self.optimize_daily_routes_with_llm(
+            #     connections, date, user_preferences
+            # )
 
-            # 2. Personalized Transport Recommendations
-            logger.info(f"  Generating personalized recommendations for {date}...")
-            # Determine time of day
-            time_of_day = "morning"  # Default
-            if len(connections) > 0:
-                if morning_item:
-                    time_of_day = "morning"
-                elif lunch_item:
-                    time_of_day = "afternoon"
-                elif afternoon_item:
-                    time_of_day = "afternoon"
+            # # 2. Personalized Transport Recommendations
+            # logger.info(f"  Generating personalized recommendations for {date}...")
+            # # Determine time of day
+            # time_of_day = "morning"  # Default
+            # if len(connections) > 0:
+            #     if morning_item:
+            #         time_of_day = "morning"
+            #     elif lunch_item:
+            #         time_of_day = "afternoon"
+            #     elif afternoon_item:
+            #         time_of_day = "afternoon"
 
-            personalized_tips = self.generate_personalized_recommendations(
-                connections, user_preferences, time_of_day
-            )
+            # personalized_tips = self.generate_personalized_recommendations(
+            #     connections, user_preferences, time_of_day
+            # )
 
-            # 3. Carbon-Conscious Travel Assistant
-            logger.info(f"  Generating carbon insights for {date}...")
-            carbon_insights = self.generate_carbon_insights(
-                connections, user_preferences.get("eco_preferences", "no")
-            )
+            # # 3. Carbon-Conscious Travel Assistant
+            # logger.info(f"  Generating carbon insights for {date}...")
+            # carbon_insights = self.generate_carbon_insights(
+            #     connections, user_preferences.get("eco_preferences", "no")
+            # )
 
-            # Store connections with LLM recommendations for this date
+            # Store connections WITHOUT LLM recommendations for this date
             transport[date] = {
-                "connections": connections,
-                "llm_recommendations": {
-                    "route_optimization": route_optimization,
-                    "personalized_tips": personalized_tips,
-                    "carbon_insights": carbon_insights
-                }
+                "connections": connections
+                # "llm_recommendations": {
+                #     "route_optimization": route_optimization,
+                #     "personalized_tips": personalized_tips,
+                #     "carbon_insights": carbon_insights
+                # }
             }
 
-        logger.info(f"Completed day-by-day route calculations with LLM recommendations")
+        logger.info(f"Completed day-by-day route calculations (LLM recommendations disabled)")
         return transport
 
     def _format_transport_modes(self, transport_options: Dict) -> List[Dict]:
