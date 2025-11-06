@@ -2,10 +2,10 @@
 GET /transport endpoint handler to check transport task status.
 
 Enhanced workflow:
-1. Check processed files first (fast path for completed jobs)
-2. If not found, check status files (for in-progress jobs)
+1. Check status file first - if completed, fetch and return full result from /processed
+2. If not completed, return status metadata (processing, queued, failed)
 3. Detect timeouts (jobs processing > 5 minutes)
-4. Return appropriate responses
+4. Return not_found if no status file exists
 """
 
 import json
@@ -30,10 +30,10 @@ def lambda_handler(event, context):
     - bucket_name: S3 bucket name (default: 'iss-travel-planner')
 
     Workflow:
-    1. Check if processed result exists (job completed)
-    2. If not, check status file (job in progress)
+    1. Check status file - if completed, fetch full result from /processed
+    2. If not completed, return status metadata (processing/queued/failed)
     3. Detect timeout if job stuck (processing > 5 minutes)
-    4. Return not_found if neither exists
+    4. Return not_found if no status file exists
 
     Returns:
         Status information with appropriate HTTP status code
@@ -58,7 +58,7 @@ def lambda_handler(event, context):
                 })
             }
 
-        # Step 1: Check processed files first (fast path)
+        # Step 1: Check status file first - if completed, get full result
         processed_result = check_processed_result(
             bucket_name=bucket_name,
             session_id=session_id,

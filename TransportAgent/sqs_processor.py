@@ -49,6 +49,9 @@ def lambda_handler(event, context):
             session_id = message_body['session']
             sender_agent = message_body.get('sender_agent', 'API')
 
+            # Extract filename from input_key
+            filename = os.path.basename(input_key)
+
             log_structured('INFO', 'Processing SQS message',
                 session_id=session_id,
                 stage='sqs_processing',
@@ -57,7 +60,8 @@ def lambda_handler(event, context):
 
             # Update status to processing
             write_status(
-                bucket_name, session_id, 'processing',
+                bucket_name, filename, 'processing',
+                session_id=session_id,
                 task_id=task_id,
                 input_key=input_key,
                 sender_agent=sender_agent,
@@ -71,7 +75,8 @@ def lambda_handler(event, context):
                 bucket_name=bucket_name,
                 input_key=input_key,
                 session_id=session_id,
-                task_id=task_id
+                task_id=task_id,
+                filename=filename
             )
 
             if result['status'] == 'success':
@@ -98,7 +103,7 @@ def lambda_handler(event, context):
     }
 
 
-def process_transport_task(bucket_name: str, input_key: str, session_id: str, task_id: str):
+def process_transport_task(bucket_name: str, input_key: str, session_id: str, task_id: str, filename: str):
     """
     Process a single transport task.
 
@@ -107,6 +112,7 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
         input_key: S3 key for input file
         session_id: Session ID
         task_id: Unique task ID
+        filename: Filename for status tracking (e.g., '20251031T003447_f312ea72.json')
 
     Returns:
         Result dictionary with status and details
@@ -145,15 +151,16 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
         result = process_transport_data(input_tmp_path, output_tmp_path)
         transport_duration = time.time() - transport_start
 
-        # Check for errors
-        if 'error' in result:
+        # Check for errors (handle None or dict with error key)
+        if result is None or 'error' in result:
             log_structured('ERROR', 'Transport processing failed',
                 session_id=session_id,
                 stage='transport_processing',
                 error=result['error'])
 
             write_status(
-                bucket_name, session_id, 'failed',
+                bucket_name, filename, 'failed',
+                session_id=session_id,
                 task_id=task_id,
                 error=result['error'],
                 failed_at=datetime.utcnow().isoformat(),
@@ -173,7 +180,6 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
 
         # Upload output file to S3
         upload_start = time.time()
-        filename = os.path.basename(input_key)
         output_key = f"{OUTPUT_PREFIX}{filename}"
 
         log_structured('INFO', 'Uploading output to S3',
@@ -192,9 +198,10 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
         # Calculate total duration
         total_duration = time.time() - processing_start
 
-        # Update status to completed
+        # Update status to completed (status file kept permanently)
         write_status(
-            bucket_name, session_id, 'completed',
+            bucket_name, filename, 'completed',
+            session_id=session_id,
             task_id=task_id,
             output_key=output_key,
             output_location=f"s3://{bucket_name}/{output_key}",
@@ -203,13 +210,10 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
             agent_type='TransportAgent'
         )
 
-        # Clean up status file after successful completion
-        # The GET endpoint will now find the result in processed/ folder
-        log_structured('INFO', 'Cleaning up status file',
+        # Status file is now kept permanently as audit record
+        log_structured('INFO', 'Status file updated to completed',
             session_id=session_id,
-            stage='cleanup')
-
-        delete_status(bucket_name, session_id, agent_type='TransportAgent')
+            stage='completion')
 
         return {
             'status': 'success',
@@ -227,7 +231,8 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
             error_message=str(e))
 
         write_status(
-            bucket_name, session_id, 'failed',
+            bucket_name, filename, 'failed',
+            session_id=session_id,
             task_id=task_id,
             error=f"S3 error: {str(e)}",
             error_code=error_code,
@@ -248,7 +253,8 @@ def process_transport_task(bucket_name: str, input_key: str, session_id: str, ta
             error_message=str(e))
 
         write_status(
-            bucket_name, session_id, 'failed',
+            bucket_name, filename, 'failed',
+            session_id=session_id,
             task_id=task_id,
             error=f"Internal error: {str(e)}",
             error_type=type(e).__name__,
