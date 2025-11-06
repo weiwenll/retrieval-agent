@@ -27,6 +27,46 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Helper function to normalize filenames
+def normalize_filename(input_key: str) -> str:
+    """
+    Normalize filename from S3 key to ensure correct format.
+
+    Handles cases like:
+    - Double extensions: '20251103T164210_a91be637.json.json' -> '20251103T164210_a91be637.json'
+    - Missing extensions: '20251103T164210_a91be637' -> '20251103T164210_a91be637.json'
+
+    Args:
+        input_key: S3 key or filename (e.g., 'retrieval_agent/active/20251103T164210_a91be637.json.json')
+
+    Returns:
+        Normalized filename (e.g., '20251103T164210_a91be637.json')
+    """
+    import os
+    import re
+
+    # Extract basename from path
+    filename = os.path.basename(input_key)
+
+    # Remove duplicate .json extensions (e.g., .json.json -> .json)
+    while filename.endswith('.json.json'):
+        filename = filename[:-5]  # Remove one '.json'
+        logger.info(f"[normalize_filename] Removed duplicate .json extension: {filename}")
+
+    # Ensure filename ends with .json
+    if not filename.endswith('.json'):
+        filename = f"{filename}.json"
+        logger.info(f"[normalize_filename] Added missing .json extension: {filename}")
+
+    # Validate format: should be like '20251103T164210_a91be637.json'
+    pattern = r'^\d{8}T\d{6}_[a-f0-9]{8}\.json$'
+    if not re.match(pattern, filename):
+        logger.warning(f"[normalize_filename] Filename doesn't match expected pattern: {filename}")
+
+    logger.info(f"[normalize_filename] Normalized '{os.path.basename(input_key)}' -> '{filename}'")
+    return filename
+
+
 # Helper function for structured logging
 def log_structured(level, message, session_id=None, stage=None, **kwargs):
     """

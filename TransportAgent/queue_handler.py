@@ -9,7 +9,7 @@ import logging
 import boto3
 import uuid
 from datetime import datetime
-from shared_utils import write_status, log_structured
+from shared_utils import write_status, log_structured, normalize_filename
 
 # Configure logging
 logger = logging.getLogger()
@@ -131,8 +131,8 @@ def lambda_handler(event, context):
 
         # Write initial status to S3 (non-blocking, don't fail if this errors)
         try:
-            # Extract filename from input_key for status tracking
-            filename = os.path.basename(input_key)
+            # Normalize filename from input_key for status tracking
+            filename = normalize_filename(input_key)
 
             write_status(
                 bucket_name, filename, 'queued',
@@ -149,8 +149,8 @@ def lambda_handler(event, context):
             logger.warning(f"Failed to write status to S3 (non-critical): {status_error}")
 
         # Return 202 Accepted immediately
-        # Extract filename for status location (same logic as write_status)
-        status_filename = os.path.basename(input_key)
+        # Normalize filename for status location (same logic as write_status)
+        status_filename = normalize_filename(input_key)
 
         return {
             'statusCode': 202,

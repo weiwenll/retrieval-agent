@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import existing functions
 from main import research_places
-from shared_utils import write_status, log_structured, delete_status
+from shared_utils import write_status, log_structured, delete_status, normalize_filename
 
 # Configure logging
 logger = logging.getLogger()
@@ -49,8 +49,8 @@ def lambda_handler(event, context):
             session_id = message_body['session']
             sender_agent = message_body.get('sender_agent', 'API')
 
-            # Extract filename from input_key
-            filename = os.path.basename(input_key)
+            # Normalize filename from input_key
+            filename = normalize_filename(input_key)
 
             log_structured('INFO', 'Processing SQS message',
                 session_id=session_id,
