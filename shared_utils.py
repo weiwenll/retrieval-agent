@@ -272,6 +272,20 @@ def check_processed_result(bucket_name: str, filename: str, agent_type: str):
             if isinstance(result_data, dict):
                 logger.info(f"[check_processed_result] Result data keys: {list(result_data.keys())}")
 
+            # Extract agent-specific nested data
+            if agent_type == 'ResearchAgent':
+                if 'retrieval' in result_data:
+                    logger.info(f"[check_processed_result] Extracting 'retrieval' key for ResearchAgent")
+                    result_data = result_data['retrieval']
+                else:
+                    logger.warning(f"[check_processed_result] 'retrieval' key not found in result data for ResearchAgent. Available keys: {list(result_data.keys())}")
+            elif agent_type == 'TransportAgent':
+                if 'transport' in result_data:
+                    logger.info(f"[check_processed_result] Extracting 'transport' key for TransportAgent")
+                    result_data = result_data['transport']
+                else:
+                    logger.warning(f"[check_processed_result] 'transport' key not found in result data for TransportAgent. Available keys: {list(result_data.keys())}")
+
             # Step 5: Return combined response
             logger.info(f"[check_processed_result] Step 5: Building combined response")
             combined_response = {
