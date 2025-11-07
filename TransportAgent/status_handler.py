@@ -103,7 +103,14 @@ def lambda_handler(event, context):
 
             if timestamp_str:
                 try:
-                    started_at = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    # Handle multiple timestamp formats (with/without timezone)
+                    timestamp_clean = timestamp_str.rstrip('Z')
+                    started_at = datetime.fromisoformat(timestamp_clean)
+
+                    # Make timezone-aware if naive (assume UTC)
+                    if started_at.tzinfo is None:
+                        started_at = started_at.replace(tzinfo=timezone.utc)
+
                     now = datetime.now(timezone.utc)
                     elapsed_seconds = int((now - started_at).total_seconds())
 
