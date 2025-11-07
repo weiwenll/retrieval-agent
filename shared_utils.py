@@ -117,6 +117,62 @@ AGENT_PREFIXES = {
 }
 
 
+def check_duplicate_session(bucket_name: str, filename: str, agent_type: str = 'ResearchAgent') -> dict:
+    """
+    Check if session is already processing or completed (idempotency check).
+
+    Args:
+        bucket_name: S3 bucket name
+        filename: Full filename (e.g., '20251031T003447_f312ea72.json')
+        agent_type: 'ResearchAgent' or 'TransportAgent'
+
+    Returns:
+        dict with 'is_duplicate' (bool) and 'existing_status' (dict or None)
+    """
+    status_prefix = AGENT_PREFIXES.get(agent_type, AGENT_PREFIXES['ResearchAgent'])['status']
+    status_key = f"{status_prefix}{filename}"
+
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=status_key)
+        existing_data = json.loads(response['Body'].read())
+
+        current_status = existing_data.get('status')
+
+        # Reject if already processing or completed
+        if current_status in ['processing', 'completed']:
+            logger.warning(f"Duplicate session detected: {filename} is already {current_status}")
+            return {
+                'is_duplicate': True,
+                'existing_status': existing_data
+            }
+
+        # Allow retry if previously failed or queued
+        if current_status in ['failed', 'queued']:
+            logger.info(f"Allowing retry for {filename} (previous status: {current_status})")
+            return {
+                'is_duplicate': False,
+                'existing_status': existing_data
+            }
+
+        return {
+            'is_duplicate': False,
+            'existing_status': existing_data
+        }
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            # No existing status - first time processing
+            return {
+                'is_duplicate': False,
+                'existing_status': None
+            }
+        logger.error(f"Error checking duplicate session for {filename}: {e}")
+        return {
+            'is_duplicate': False,  # Allow processing on error
+            'existing_status': None
+        }
+
+
 def write_status(bucket_name: str, filename: str, status: str, **kwargs):
     """
     Write processing status to S3 for async tracking.

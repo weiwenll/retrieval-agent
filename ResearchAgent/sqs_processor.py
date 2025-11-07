@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 
 # Import existing functions
 from main import research_places
-from shared_utils import write_status, log_structured, delete_status, normalize_filename
+from shared_utils import write_status, log_structured, delete_status, normalize_filename, check_duplicate_session
 
 # Configure logging
 logger = logging.getLogger()
@@ -52,11 +52,89 @@ def lambda_handler(event, context):
             # Normalize filename from input_key
             filename = normalize_filename(input_key)
 
-            log_structured('INFO', 'Processing SQS message',
+            # ============================================================
+            # LOG: New session received
+            # ============================================================
+            logger.info(f"{'='*80}")
+            logger.info(f"[OK] NEW SESSION RECEIVED")
+            logger.info(f"     PROCESSING FILE: {filename}")
+            logger.info(f"     SESSION ID: {session_id}")
+            logger.info(f"     TASK ID: {task_id}")
+            logger.info(f"     SQS MESSAGE ID: {record['messageId']}")
+            logger.info(f"{'='*80}")
+
+            log_structured('INFO', 'NEW SESSION RECEIVED',
                 session_id=session_id,
-                stage='sqs_processing',
+                stage='session_start',
                 task_id=task_id,
+                filename=filename,
                 sqs_message_id=record['messageId'])
+
+            # ============================================================
+            # CHECK: Duplicate session detection
+            # ============================================================
+            from shared_utils import check_duplicate_session
+
+            duplicate_check = check_duplicate_session(
+                bucket_name=bucket_name,
+                filename=filename,
+                agent_type='ResearchAgent'
+            )
+
+            if duplicate_check['is_duplicate']:
+                existing_status = duplicate_check['existing_status']
+                current_status = existing_status.get('status', 'unknown')
+
+                # ============================================================
+                # LOG: Duplicate detected - REJECT
+                # ============================================================
+                logger.warning(f"{'='*80}")
+                logger.warning(f"[WARNING] DUPLICATE SESSION DETECTED")
+                logger.warning(f"          FILE: {filename}")
+                logger.warning(f"          SESSION ID: {session_id}")
+                logger.warning(f"          CURRENT STATUS: {current_status.upper()}")
+                logger.warning(f"          ORIGINAL TASK ID: {existing_status.get('task_id')}")
+                logger.warning(f"          STARTED AT: {existing_status.get('started_at')}")
+                logger.warning(f"          ACTION: REJECTING DUPLICATE REQUEST (IDEMPOTENCY)")
+                logger.warning(f"{'='*80}")
+
+                log_structured('WARNING', 'DUPLICATE SESSION REJECTED',
+                    session_id=session_id,
+                    stage='duplicate_rejection',
+                    task_id=task_id,
+                    filename=filename,
+                    current_status=current_status,
+                    existing_task_id=existing_status.get('task_id'))
+
+                # Skip processing this duplicate
+                continue
+
+            else:
+                # ============================================================
+                # LOG: Session validated - PROCEED
+                # ============================================================
+                if duplicate_check['existing_status']:
+                    old_status = duplicate_check['existing_status'].get('status', 'unknown')
+                    logger.info(f"[OK] SESSION RETRY ALLOWED")
+                    logger.info(f"     FILE: {filename}")
+                    logger.info(f"     PREVIOUS STATUS: {old_status.upper()}")
+                    logger.info(f"     ACTION: PROCEEDING WITH RETRY")
+
+                    log_structured('INFO', 'SESSION RETRY ALLOWED',
+                        session_id=session_id,
+                        stage='session_retry',
+                        task_id=task_id,
+                        previous_status=old_status)
+                else:
+                    logger.info(f"[OK] SESSION VALIDATED")
+                    logger.info(f"     FILE: {filename}")
+                    logger.info(f"     STATUS: NEW UNIQUE SESSION")
+                    logger.info(f"     ACTION: PROCEEDING WITH PROCESSING")
+
+                    log_structured('INFO', 'SESSION VALIDATED - UNIQUE',
+                        session_id=session_id,
+                        stage='session_validated',
+                        task_id=task_id)
 
             # Update status to processing
             write_status(
