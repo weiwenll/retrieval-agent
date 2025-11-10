@@ -767,7 +767,7 @@ def generate_tags(
         accessibility_options: List of accessibility features
         price_level: Price level (0-4)
         rating: Place rating
-        description: Place description (from Wikipedia)
+        description: Place description (from Google)
         name: Place name
         reviews_count: Total number of reviews (user_ratings_total)
         openai_client: OpenAI client instance for LLM tag extraction
@@ -834,7 +834,7 @@ def generate_tags(
             tags.append(area_tag)
 
     # 8. Use LLM to extract additional descriptive tags from description
-    # Only if description is from Wikipedia (not generic fallback) and client is provided
+    # Only if description is from Google (not generic fallback) and client is provided
     if openai_client and description and not description.startswith("A "):
         llm_tags = extract_tags_from_description(
             description, name, place_type, tags, openai_client
@@ -864,7 +864,7 @@ def extract_tags_from_description(
     Use LLM to extract additional descriptive tags from place description.
 
     Args:
-        description: Wikipedia description
+        description: Google description
         name: Place name
         place_type: Primary type
         existing_tags: Tags already generated

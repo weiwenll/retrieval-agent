@@ -35,7 +35,7 @@
    Or install packages individually:
    ```bash
    pip install openai anthropic python-dotenv jupyter
-   pip install agents pydantic requests wikipedia-api
+   pip install agents pydantic requests
    pip install boto3 botocore IPython
    ```
 

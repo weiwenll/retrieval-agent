@@ -1069,7 +1069,7 @@ class PlacesResearchFormattingAgent:
     """
     Specialized agent for formatting raw Google Places API v1 data into structured output.
     Handles data from search_places/search_multiple_keywords and get_place_details.
-    Uses editorialSummary from API v1 instead of Wikipedia.
+    Uses editorialSummary from Google Places API v1, or generates descriptions with LLM fallback.
     """
 
     def __init__(self, use_llm_for_all: bool = False):
@@ -1222,159 +1222,18 @@ class PlacesResearchFormattingAgent:
             },  # Ignored
             "vegetarian_friendly": None,  # Ignored
             "low_carbon_score": None,  # Ignored
-            "description": None,  # Will be set by Wikipedia search
+            "description": None,  # Will be set from editorialSummary or LLM
             "links": {
                 "official": website,
                 "reviews": None  # Ignored
             },
             "rating": rating,
-            "tags": [],  # Will be set by Wikipedia search
+            "tags": [],  # Will be set from rule-based + LLM tag generation
             "_raw_types": types,  # Store for reference
             "_raw_opening_hours": opening_hours_raw  # Store for reference
         }
         
         return formatted_place
-    
-    def _generate_wikipedia_descriptions(self, places: List[Dict]) -> List[Dict]:
-        """
-        Generate descriptions and tags for places using Wikipedia search.
-        Process in batches for efficiency.
-        """
-        if not places:
-            return places
-        
-        # Process in batches to avoid token limits
-        batch_size = 10
-        processed_places = []
-        
-        for i in range(0, len(places), batch_size):
-            batch = places[i:i + batch_size]
-            batch_num = i // batch_size + 1
-            
-            logger.info(f"Processing Wikipedia batch {batch_num} with {len(batch)} places")
-            
-            # Search Wikipedia for each place
-            wikipedia_results = {}
-            for place in batch:
-                try:
-                    wiki_result = search_wikipedia(search_term=place["name"])
-                    wikipedia_results[place["name"]] = wiki_result
-                    logger.info(f"Found Wikipedia info for: {place['name']}")
-                except Exception as e:
-                    logger.warning(f"No Wikipedia info for {place['name']}: {e}")
-                    wikipedia_results[place["name"]] = None
-            
-            # Use LLM to create descriptions and tags from Wikipedia results
-            try:
-                enriched_batch = self._create_descriptions_from_wikipedia(batch, wikipedia_results)
-                processed_places.extend(enriched_batch)
-                logger.info(f"Successfully enriched batch {batch_num}")
-            except Exception as e:
-                logger.error(f"Failed to create descriptions for batch {batch_num}: {e}")
-                # Keep places without descriptions/tags
-                for place in batch:
-                    place.pop("_raw_types", None)
-                    place.pop("_raw_opening_hours", None)
-                processed_places.extend(batch)
-        
-        return processed_places
-    
-    def _create_descriptions_from_wikipedia(self, batch: List[Dict], wikipedia_results: Dict) -> List[Dict]:
-        """
-        Use LLM to create descriptions and tags from Wikipedia search results.
-        """
-        # Prepare data for LLM
-        places_with_wiki = []
-        for place in batch:
-            wiki_data = wikipedia_results.get(place["name"])
-
-            # Log Wikipedia data source
-            if wiki_data:
-                logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Wikipedia data found (length: {len(wiki_data)} chars)")
-                # Log first 100 chars of Wikipedia data to help identify mismatches
-                logger.info(f"  Wikipedia preview: {wiki_data[:100]}...")
-            else:
-                logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - No Wikipedia data, will use fallback")
-
-            place_data = {
-                "name": place["name"],
-                "type": place["type"],
-                "address": place.get("address"),
-                "rating": place.get("rating"),
-                "wikipedia_info": wiki_data
-            }
-            places_with_wiki.append(place_data)
-
-        prompt = f"""You are a Singapore tourism expert. Create compelling descriptions and tags for these places.
-
-IMPORTANT CONTEXT:
-- All places are located in SINGAPORE
-- Use the place name, address, type, and rating to create accurate descriptions
-- If Wikipedia info is provided, ONLY use it if it clearly relates to the Singapore location
-- If Wikipedia seems to describe a different place/country, IGNORE it and use the basic info instead
-
-Places data:
-{json.dumps(places_with_wiki, indent=2)}
-
-For each place, create:
-1. Description: 1-2 sentence compelling tourist description
-- If Wikipedia is relevant and matches the Singapore location, use it
-- If no Wikipedia OR Wikipedia describes wrong location, generate based on: name + type + address + Singapore context
-- Example: "Popular waterfront attraction in Marina Bay area" or "Historic temple in Chinatown district"
-2. Tags: 3-5 relevant tags for travelers based on the place type and characteristics
-
-Return a JSON array (no markdown formatting) with the same order, each object containing:
-- description: 1-2 sentence compelling tourist description
-- tags: array of 3-5 relevant tags
-
-Example format:
-[{{"description": "Iconic waterfront park featuring Singapore's famous Merlion statue", "tags": ["landmark", "waterfront", "photo spot", "free entry", "iconic"]}}]
-"""
-
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "system", "content": "You are a Singapore tourism expert. Create accurate descriptions for Singapore places using provided context (name, address, type). Use Wikipedia data only if it clearly matches the Singapore location. If Wikipedia describes a different country/place, ignore it and generate description from basic place info."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=self.temperature
-        )
-
-        llm_output = response.choices[0].message.content.strip()
-
-        # Handle markdown-wrapped JSON
-        llm_output = self._extract_json_from_markdown(llm_output)
-
-        logger.info(f"LLM response (first 100 chars): {llm_output[:100]}...")
-
-        llm_data = json.loads(llm_output)
-
-        # Merge LLM data back into places
-        for i, place in enumerate(batch):
-            if i < len(llm_data):
-                llm_place = llm_data[i]
-                description = llm_place.get("description", "A place to visit in Singapore")
-                tags = llm_place.get("tags", [place["type"]])
-
-                # Log the final description source
-                wiki_data = wikipedia_results.get(place["name"])
-                if wiki_data:
-                    logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Description generated by LLM from Wikipedia")
-                else:
-                    logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Description generated by LLM (no Wikipedia data)")
-
-                place["description"] = description
-                place["tags"] = tags
-            else:
-                logger.info(f"[DESCRIPTION SOURCE] Place: '{place['name']}' - Fallback description (generic)")
-                place["description"] = f"A {place['type']} in Singapore"
-                place["tags"] = [place["type"]]
-
-            # Clean up temp fields
-            place.pop("_raw_types", None)
-            place.pop("_raw_opening_hours", None)
-
-        return batch
     
     def _extract_json_from_markdown(self, text: str) -> str:
         """Extract JSON from markdown code blocks."""
