@@ -4,284 +4,6 @@ Maps user preferences (both positive and negative) to Google Places API v1 types
 """
 
 # ============================================================================
-# INTEREST MAPPINGS - What users are looking for
-# ============================================================================
-
-INTEREST_MAPPINGS = {
-    # ========== FOOD & DINING ==========
-    # General Food
-    "food": ["restaurant", "cafe", "bakery", "food_court"],
-    "dining": ["restaurant", "fine_dining_restaurant"],
-    "eating": ["restaurant", "fast_food_restaurant", "food_court"],
-    "meals": ["restaurant", "meal_takeaway", "meal_delivery"],
-    "cuisine": ["restaurant"],
-    "foodie": ["restaurant", "fine_dining_restaurant", "food_court"],
-    "gastronomy": ["fine_dining_restaurant", "restaurant"],
-    
-    # Specific Cuisines
-    "asian": ["asian_restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant", "thai_restaurant", "vietnamese_restaurant", "indonesian_restaurant"],
-    "chinese": ["chinese_restaurant"],
-    "japanese": ["japanese_restaurant", "sushi_restaurant", "ramen_restaurant"],
-    "korean": ["korean_restaurant"],
-    "thai": ["thai_restaurant"],
-    "vietnamese": ["vietnamese_restaurant"],
-    "indian": ["indian_restaurant"],
-    "indonesian": ["indonesian_restaurant"],
-    "italian": ["italian_restaurant", "pizza_restaurant"],
-    "french": ["french_restaurant"],
-    "mexican": ["mexican_restaurant"],
-    "spanish": ["spanish_restaurant"],
-    "greek": ["greek_restaurant"],
-    "mediterranean": ["mediterranean_restaurant", "greek_restaurant", "lebanese_restaurant"],
-    "middle eastern": ["middle_eastern_restaurant", "lebanese_restaurant", "turkish_restaurant"],
-    "american": ["american_restaurant", "hamburger_restaurant", "steak_house"],
-    "brazilian": ["brazilian_restaurant"],
-    "african": ["african_restaurant"],
-    "afghani": ["afghani_restaurant"],
-    
-    # Meal Types
-    "breakfast": ["breakfast_restaurant", "brunch_restaurant", "cafe", "bakery"],
-    "brunch": ["brunch_restaurant", "breakfast_restaurant", "cafe"],
-    "lunch": ["restaurant", "fast_food_restaurant", "sandwich_shop", "deli"],
-    "dinner": ["restaurant", "fine_dining_restaurant", "steak_house"],
-    "buffet": ["buffet_restaurant"],
-    
-    # Dietary Preferences
-    "vegetarian": ["vegetarian_restaurant", "vegan_restaurant"],
-    "vegan": ["vegan_restaurant", "vegetarian_restaurant"],
-    "seafood": ["seafood_restaurant", "sushi_restaurant"],
-    "meat": ["steak_house", "barbecue_restaurant", "hamburger_restaurant"],
-    "bbq": ["barbecue_restaurant", "bar_and_grill"],
-    "barbecue": ["barbecue_restaurant", "bar_and_grill"],
-    "steak": ["steak_house"],
-    "sushi": ["sushi_restaurant", "japanese_restaurant"],
-    "ramen": ["ramen_restaurant", "japanese_restaurant"],
-    "pizza": ["pizza_restaurant", "italian_restaurant"],
-    "burger": ["hamburger_restaurant", "fast_food_restaurant"],
-    "sandwich": ["sandwich_shop", "deli"],
-    
-    # Cafes & Desserts
-    "cafe": ["cafe", "coffee_shop", "tea_house", "cat_cafe", "dog_cafe"],
-    "coffee": ["coffee_shop", "cafe"],
-    "tea": ["tea_house", "cafe"],
-    "dessert": ["dessert_shop", "dessert_restaurant", "ice_cream_shop", "bakery"],
-    "ice cream": ["ice_cream_shop"],
-    "bakery": ["bakery"],
-    "pastry": ["bakery", "confectionery"],
-    "chocolate": ["chocolate_shop", "chocolate_factory", "confectionery"],
-    "sweets": ["candy_store", "confectionery", "dessert_shop"],
-    "juice": ["juice_shop"],
-    "smoothie": ["juice_shop", "acai_shop"],
-    "acai": ["acai_shop"],
-    
-    # Quick Bites
-    "fast food": ["fast_food_restaurant"],
-    "quick": ["fast_food_restaurant", "meal_takeaway", "food_court"],
-    "takeaway": ["meal_takeaway", "fast_food_restaurant"],
-    "delivery": ["meal_delivery"],
-    "street food": ["food_court", "market"],
-    "snack": ["cafe", "bakery", "convenience_store"],
-    "deli": ["deli", "sandwich_shop"],
-    
-    # Bars & Nightlife
-    "bar": ["bar", "pub", "wine_bar", "bar_and_grill"],
-    "pub": ["pub", "bar"],
-    "drinks": ["bar", "pub", "wine_bar"],
-    "cocktails": ["bar", "wine_bar"],
-    "wine": ["wine_bar", "bar"],
-    "beer": ["pub", "bar"],
-    "nightlife": ["night_club", "bar", "pub", "casino"],
-    "club": ["night_club"],
-    "nightclub": ["night_club"],
-    "party": ["night_club", "bar"],
-    
-    # ========== ATTRACTIONS & ENTERTAINMENT ==========
-    # Museums & Culture
-    "museum": ["museum", "art_gallery"],
-    "art": ["art_gallery", "art_studio", "museum"],
-    "gallery": ["art_gallery"],
-    "culture": ["museum", "cultural_center", "cultural_landmark", "performing_arts_theater"],
-    "cultural": ["cultural_center", "cultural_landmark", "museum"],
-    "history": ["museum", "historical_landmark", "historical_place", "monument"],
-    "historical": ["historical_landmark", "historical_place", "museum"],
-    "heritage": ["museum", "historical_landmark", "monument"],
-    "monument": ["monument", "historical_landmark"],
-    "sculpture": ["sculpture", "art_gallery"],
-    
-    # Entertainment
-    "entertainment": ["amusement_park", "amusement_center", "movie_theater", "performing_arts_theater"],
-    "theater": ["movie_theater", "performing_arts_theater", "concert_hall"],
-    "theatre": ["movie_theater", "performing_arts_theater", "concert_hall"],
-    "movie": ["movie_theater"],
-    "cinema": ["movie_theater"],
-    "concert": ["concert_hall", "amphitheatre", "event_venue"],
-    "music": ["concert_hall", "philharmonic_hall", "night_club"],
-    "comedy": ["comedy_club"],
-    "show": ["performing_arts_theater", "concert_hall", "event_venue"],
-    "opera": ["opera_house", "performing_arts_theater"],
-    "dance": ["dance_hall", "night_club"],
-    "karaoke": ["karaoke"],
-    
-    # Family & Kids
-    "family": ["amusement_park", "zoo", "aquarium", "park", "playground"],
-    "kids": ["amusement_park", "zoo", "aquarium", "playground", "childrens_camp"],
-    "children": ["playground", "amusement_park", "zoo", "aquarium", "childrens_camp"],
-    "playground": ["playground", "park"],
-    
-    # Theme Parks & Attractions
-    "theme park": ["amusement_park"],
-    "amusement": ["amusement_park", "amusement_center"],
-    "roller coaster": ["roller_coaster", "amusement_park"],
-    "ferris wheel": ["ferris_wheel", "amusement_park"],
-    "water park": ["water_park"],
-    "zoo": ["zoo", "wildlife_park"],
-    "aquarium": ["aquarium"],
-    "animals": ["zoo", "aquarium", "wildlife_park", "wildlife_refuge"],
-    "wildlife": ["wildlife_park", "wildlife_refuge", "zoo"],
-    
-    # Gaming & Recreation
-    "gaming": ["video_arcade", "amusement_center", "casino"],
-    "arcade": ["video_arcade", "amusement_center"],
-    "bowling": ["bowling_alley"],
-    "casino": ["casino"],
-    "gambling": ["casino"],
-    
-    # ========== OUTDOOR & NATURE ==========
-    "outdoor": ["park", "hiking_area", "beach", "camping_cabin", "campground"],
-    "nature": ["park", "national_park", "state_park", "botanical_garden", "hiking_area"],
-    "park": ["park", "national_park", "state_park", "dog_park"],
-    "garden": ["botanical_garden", "garden"],
-    "botanical": ["botanical_garden"],
-    "beach": ["beach"],
-    "hiking": ["hiking_area", "park", "national_park"],
-    "camping": ["campground", "camping_cabin", "rv_park"],
-    "picnic": ["picnic_ground", "park", "barbecue_area"],
-    "bbq area": ["barbecue_area", "picnic_ground"],
-    "scenic": ["observation_deck", "park", "botanical_garden"],
-    "viewpoint": ["observation_deck"],
-    "adventure": ["adventure_sports_center", "hiking_area", "off_roading_area"],
-    "cycling": ["cycling_park", "park"],
-    "skateboard": ["skateboard_park"],
-    "marina": ["marina"],
-    
-    # ========== SPORTS & FITNESS ==========
-    "sports": ["sports_complex", "stadium", "arena", "athletic_field"],
-    "fitness": ["gym", "fitness_center", "sports_complex"],
-    "gym": ["gym", "fitness_center"],
-    "workout": ["gym", "fitness_center"],
-    "swimming": ["swimming_pool"],
-    "pool": ["swimming_pool"],
-    "golf": ["golf_course"],
-    "tennis": ["sports_complex", "athletic_field"],
-    "basketball": ["sports_complex", "athletic_field"],
-    "football": ["stadium", "athletic_field"],
-    "soccer": ["stadium", "athletic_field"],
-    "stadium": ["stadium", "arena"],
-    "ice skating": ["ice_skating_rink"],
-    "skiing": ["ski_resort"],
-    "fishing": ["fishing_pond", "fishing_charter"],
-    
-    # ========== WELLNESS & RELAXATION ==========
-    "spa": ["spa", "wellness_center"],
-    "wellness": ["wellness_center", "spa", "yoga_studio"],
-    "massage": ["massage", "spa"],
-    "yoga": ["yoga_studio", "wellness_center"],
-    "meditation": ["yoga_studio", "wellness_center"],
-    "relax": ["spa", "park", "beach"],
-    "relaxation": ["spa", "wellness_center", "park"],
-    "sauna": ["sauna", "spa"],
-    "beauty": ["beauty_salon", "beautician", "spa"],
-    "salon": ["beauty_salon", "hair_salon"],
-    "hair": ["hair_salon", "hair_care", "barber_shop"],
-    "nails": ["nail_salon", "beauty_salon"],
-    "tanning": ["tanning_studio"],
-    "skin care": ["skin_care_clinic", "spa"],
-    
-    # ========== SHOPPING ==========
-    "shopping": ["shopping_mall", "department_store", "clothing_store"],
-    "mall": ["shopping_mall"],
-    "shops": ["shopping_mall", "store"],
-    "boutique": ["clothing_store", "gift_shop"],
-    "market": ["market", "grocery_store"],
-    "clothes": ["clothing_store", "department_store"],
-    "fashion": ["clothing_store", "department_store", "shoe_store"],
-    "shoes": ["shoe_store"],
-    "jewelry": ["jewelry_store"],
-    "electronics": ["electronics_store"],
-    "books": ["book_store", "library"],
-    "bookstore": ["book_store"],
-    "gifts": ["gift_shop"],
-    "souvenirs": ["gift_shop", "store"],
-    "furniture": ["furniture_store", "home_goods_store"],
-    "home decor": ["home_goods_store", "furniture_store"],
-    "groceries": ["grocery_store", "supermarket"],
-    "supermarket": ["supermarket", "grocery_store"],
-    "convenience": ["convenience_store"],
-    "pharmacy": ["pharmacy", "drugstore"],
-    "liquor": ["liquor_store"],
-    "pet": ["pet_store"],
-    "sports equipment": ["sporting_goods_store"],
-    "hardware": ["hardware_store", "home_improvement_store"],
-    
-    # ========== ACCOMMODATION ==========
-    "hotel": ["hotel", "resort_hotel"],
-    "accommodation": ["lodging", "hotel"],
-    "stay": ["lodging", "hotel"],
-    "lodging": ["lodging"],
-    "resort": ["resort_hotel"],
-    "hostel": ["hostel"],
-    "motel": ["motel"],
-    "inn": ["inn", "japanese_inn", "budget_japanese_inn"],
-    "bed and breakfast": ["bed_and_breakfast"],
-    "guesthouse": ["guest_house"],
-    "vacation rental": ["cottage", "private_guest_room"],
-    "camping": ["campground", "camping_cabin", "rv_park"],
-    "farmstay": ["farmstay"],
-    
-    # ========== RELIGIOUS & SPIRITUAL ==========
-    "temple": ["hindu_temple", "buddhist_temple"],
-    "church": ["church"],
-    "mosque": ["mosque"],
-    "synagogue": ["synagogue"],
-    "worship": ["church", "hindu_temple", "mosque", "synagogue"],
-    "religious": ["church", "hindu_temple", "mosque", "synagogue"],
-    "spiritual": ["church", "hindu_temple", "mosque", "synagogue"],
-    "prayer": ["church", "hindu_temple", "mosque", "synagogue"],
-    
-    # ========== EDUCATION & LEARNING ==========
-    "library": ["library"],
-    "education": ["museum", "library", "university"],
-    "learning": ["museum", "library", "cultural_center"],
-    "school": ["school", "primary_school", "secondary_school", "university"],
-    "university": ["university"],
-    "college": ["university"],
-    "preschool": ["preschool"],
-    
-    # ========== TRANSPORTATION ==========
-    "transport": ["train_station", "bus_station", "subway_station"],
-    "transportation": ["transit_station", "transit_depot"],
-    "train": ["train_station"],
-    "bus": ["bus_station", "bus_stop"],
-    "subway": ["subway_station"],
-    "metro": ["subway_station"],
-    "airport": ["airport", "international_airport"],
-    "ferry": ["ferry_terminal"],
-    "taxi": ["taxi_stand"],
-    
-    # ========== TOURIST SPECIFIC ==========
-    "tourist": ["tourist_attraction", "tourist_information_center"],
-    "attraction": ["tourist_attraction"],
-    "sightseeing": ["tourist_attraction", "observation_deck"],
-    "landmark": ["historical_landmark", "cultural_landmark", "monument"],
-    "iconic": ["tourist_attraction", "monument"],
-    "must see": ["tourist_attraction", "historical_landmark"],
-    "photo spot": ["observation_deck", "tourist_attraction"],
-    "instagram": ["tourist_attraction", "observation_deck"],
-    "visitor center": ["visitor_center", "tourist_information_center"],
-    "tour": ["tour_agency", "travel_agency"],
-}
-
-# ============================================================================
 # UNINTEREST MAPPINGS - What users want to avoid
 # ============================================================================
 
@@ -538,8 +260,112 @@ RATING_TAG_THRESHOLDS = {
 }
 
 # ============================================================================
-# TAG GENERATION MAPPINGS - Convert Google Place types to descriptive tags
+# AUTO-EXCLUSIONS - Types to automatically exclude for specific interests
 # ============================================================================
+
+# Map interests to types that should be EXCLUDED from searches
+# Prevents irrelevant results (e.g., pet stores when searching for aquariums)
+INTEREST_AUTO_EXCLUSIONS = {
+    "aquarium": ["pet_store"],  # Aquarium attractions, not pet shops
+    "zoo": ["pet_store"],        # Zoo attractions, not pet shops
+    "wildlife": ["pet_store"],   # Wildlife viewing, not pet shops
+    "animals": ["pet_store"],    # Animal attractions, not pet shops (unless they want pet shops)
+}
+
+# ============================================================================
+# ATTRACTION RECOGNITION - Set of all Google Place types that are attraction-related
+# ============================================================================
+ATTRACTION_PLACE_TYPES = {
+    # Business
+    "farm", "ranch",
+    
+    # Culture
+    "art_gallery", "art_studio", "auditorium", "cultural_landmark", "historical_place",
+    "monument", "museum", "performing_arts_theater", "sculpture", "landmark", "point_of_interest",
+
+    # Education
+    "university",
+    
+    # Entertainment and Recreation
+    "adventure_sports_center", "amphitheatre", "amusement_center", "amusement_park", "aquarium",
+    "barbecue_area", "botanical_garden", "bowling_alley", "casino", "childrens_camp",
+    "comedy_club", "community_center", "concert_hall", "convention_center", "cultural_center",
+    "cycling_park", "dog_park", "ferris_wheel", "garden", "hiking_area", "historical_landmark",
+    "internet_cafe", "karaoke", "marina", "movie_theater", "national_park", "night_club",
+    "observation_deck", "opera_house", "park", "philharmonic_hall", "picnic_ground", "planetarium", "plaza",
+    "roller_coaster", "skateboard_park", "state_park", "tourist_attraction", "video_arcade", "visitor_center", "water_park",
+    "wildlife_park", "wildlife_refuge", "zoo",
+    
+    # Health and Wellness
+    "sauna", "spa",
+
+    # Natural Features
+    "beach", "natural_feature",
+    
+    # Places of Worship
+    "church", "hindu_temple", "mosque", "synagogue","place_of_worship",
+    
+    # Shopping
+    "asian_grocery_store", "auto_parts_store", "bicycle_store", "book_store", "butcher_shop",
+    "cell_phone_store", "clothing_store", "convenience_store", "department_store", "discount_store",
+    "electronics_store", "food_store", "furniture_store", "gift_shop", "grocery_store",
+    "hardware_store", "home_goods_store", "home_improvement_store", "jewelry_store",
+    "liquor_store", "market", "pet_store", "shoe_store", "shopping_mall",
+    "sporting_goods_store", "store", "supermarket", "warehouse_store", "wholesaler"
+    
+    # Sports
+    "arena", "athletic_field", "fishing_charter", "fishing_pond", "fitness_center",
+    "golf_course", "gym", "ice_skating_rink", "playground", "ski_resort",
+    "sports_activity_location", "sports_club", "sports_coaching",
+    "sports_complex", "stadium", "swimming_pool",
+    
+    # Transportation
+    "international_airport"
+}
+
+# ============================================================================
+# FOOD PLACE RECOGNITION - Set of all Google Place types that are food-related
+# ============================================================================
+
+# Complete set of food-related place types for classification
+FOOD_PLACE_TYPES = {
+    # Restaurants by cuisine
+    "restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant",
+    "thai_restaurant", "vietnamese_restaurant", "indian_restaurant", "indonesian_restaurant",
+    "italian_restaurant", "french_restaurant", "mexican_restaurant", "spanish_restaurant",
+    "greek_restaurant", "mediterranean_restaurant", "middle_eastern_restaurant",
+    "american_restaurant", "seafood_restaurant", "asian_restaurant",
+
+    # Restaurants by meal type
+    "breakfast_restaurant", "brunch_restaurant", "fine_dining_restaurant",
+    "fast_food_restaurant", "buffet_restaurant",
+
+    # Restaurants by dietary
+    "vegetarian_restaurant", "vegan_restaurant",
+
+    # Specific food types
+    "sushi_restaurant", "ramen_restaurant", "pizza_restaurant",
+    "hamburger_restaurant", "steak_house", "barbecue_restaurant",
+    "sandwich_shop", "deli",
+
+    # Cafes & Coffee
+    "cafe", "coffee_shop", "bistro",
+
+    # Bakeries & Desserts
+    "bakery", "dessert_shop", "ice_cream_shop", "candy_store",
+
+    # Food courts & Markets
+    "food_court", "hawker_centre", "night_market",
+
+    # Bars & Drinks
+    "bar", "wine_bar", "cocktail_bar", "pub", "bar_and_grill",
+
+    # Food services
+    "meal_takeaway", "meal_delivery", "food",
+
+    # Other dining
+    "diner", "tea_house"
+}
 
 # Food type mappings - Extract food-specific tags from Google Place types
 FOOD_TYPE_MAPPINGS = {

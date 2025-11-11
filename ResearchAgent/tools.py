@@ -2,11 +2,13 @@ import os
 import time
 import unicodedata
 from typing import Optional, Dict, List, Set
-from venv import logger
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Import mappings from config
 from config import UNINTEREST_MAPPINGS, SPECIAL_INTEREST_CATEGORIES, DIETARY_EXCLUSIONS
@@ -919,33 +921,6 @@ def extract_tags_from_description(
         logger.debug(f"LLM tag extraction failed for {name}: {e}")
         return []
 
-def get_exclusions_for_uninterest(uninterest: str) -> List[str]:
-    """
-    Get list of Google Place types to exclude for a given uninterest.
-
-    Args:
-        uninterest: User's uninterest keyword
-
-    Returns:
-        List of Google Place types to exclude
-    """
-    uninterest = uninterest.lower().strip()
-
-    # Check direct mapping
-    if uninterest in UNINTEREST_MAPPINGS:
-        return UNINTEREST_MAPPINGS[uninterest].copy()
-
-    # Check special categories
-    if uninterest in SPECIAL_INTEREST_CATEGORIES:
-        return SPECIAL_INTEREST_CATEGORIES[uninterest]["exclude"].copy()
-
-    # Check for partial matches
-    for key, value in UNINTEREST_MAPPINGS.items():
-        if key in uninterest or uninterest in key:
-            return value.copy() if isinstance(value, list) else [value]
-
-    return []
-
 def convert_dietary_to_exclusions(dietary_restrictions: List[str]) -> List[str]:
     """
     Convert dietary restrictions to Google Places API excluded types.
@@ -1013,3 +988,65 @@ def generate_place_description(place_data: dict, openai_client=None) -> str:
     except Exception as e:
         logger.debug(f"LLM description generation failed for {place_data.get('name')}: {e}")
         return f"A {place_data.get('type', 'place')} located at {place_data.get('address', 'Singapore')}."
+
+
+def map_interest_to_place_types(interest: str, openai_client) -> List[str]:
+    """
+    Map a user interest/category to valid Google Place types using LLM.
+
+    This function uses ATTRACTION_PLACE_TYPES to ensure only valid Google types are returned.
+
+    Args:
+        interest: User interest or category (e.g., "museums", "temples", "nature")
+        openai_client: OpenAI client instance for LLM calls
+
+    Returns:
+        List of 1-3 valid Google Place types (e.g., ["museum", "art_gallery"])
+    """
+    from config import ATTRACTION_PLACE_TYPES, LLM_CONFIG
+    import json
+    import re
+
+    logger = logging.getLogger(__name__)
+
+    # Convert set to sorted list for prompt
+    valid_types_list = sorted(list(ATTRACTION_PLACE_TYPES))
+
+    prompt = f"""Map the user interest "{interest}" to 1-3 most relevant Google Place types.
+
+ONLY use types from this list (these are the ONLY valid Google Place types for attractions):
+{', '.join(valid_types_list)}
+
+Return ONLY a JSON array of 1-3 type strings. Example: ["museum", "art_gallery"]
+
+Interest: {interest}
+Types:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model=LLM_CONFIG["model"],
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": "You are a type mapping assistant. Map user interests to valid Google Place types. Return ONLY a JSON array, nothing else."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # Extract JSON array
+        json_match = re.search(r'\[.*?\]', content, re.DOTALL)
+        if json_match:
+            place_types = json.loads(json_match.group())
+            # Validate types are in ATTRACTION_PLACE_TYPES
+            valid_place_types = [t for t in place_types if isinstance(t, str) and t in ATTRACTION_PLACE_TYPES]
+            logger.info(f"Mapped interest '{interest}' -> {valid_place_types}")
+            return valid_place_types[:3]  # Max 3 types
+
+        logger.warning(f"LLM mapping failed to return JSON for '{interest}'")
+        return ["tourist_attraction"]  # Fallback
+
+    except Exception as e:
+        logger.warning(f"LLM mapping failed for interest '{interest}': {e}")
+        return ["tourist_attraction"]  # Fallback

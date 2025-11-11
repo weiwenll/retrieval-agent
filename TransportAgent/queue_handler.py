@@ -175,7 +175,7 @@ def lambda_handler(event, context):
                 )
 
                 if result:
-                    logger.info(f"✓ Result ready after {elapsed}s! Returning 200 with full result")
+                    logger.info(f"[Ok] Result ready after {elapsed}s! Returning 200 with full result")
                     return {
                         'statusCode': 200,
                         'headers': {

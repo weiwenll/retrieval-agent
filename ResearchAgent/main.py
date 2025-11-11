@@ -9,7 +9,8 @@ import os
 import sys
 import json
 import logging
-import math
+import time
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 
@@ -25,6 +26,27 @@ try:
     from anthropic import Anthropic
 except ImportError:
     Anthropic = None
+
+# Import tools and utilities
+from tools import (
+    search_places, get_place_details, remove_unicode, standardize_opening_hours, generate_tags,
+    convert_dietary_to_exclusions, generate_place_description,
+    geocode_location, reverse_geocode, map_interest_to_place_types
+)
+from tool_clustering import calculate_geo_cluster
+from singapore_onsite_carbon_score import get_place_carbon_details
+
+# Import config constants
+from config import (
+    FOOD_PLACE_TYPES,
+    SINGAPORE_GEOCLUSTERS_BOUNDARIES,
+    SINGAPORE_GEOCLUSTERS_POINTS,
+    ATTRACTION_MULTIPLIER,
+    FOOD_MULTIPLIER,
+    INTEREST_AUTO_EXCLUSIONS,
+    FOOD_SEARCH_PARAMS_BY_CLUSTER,
+    DIETARY_EXCLUSIONS
+)
     
 # Configure logging
 handlers = [logging.StreamHandler()]
@@ -101,15 +123,6 @@ except FileNotFoundError:
 # - Returns raw data objects from API calls without any formatting
 # - Has the calculate_required_places method
 
-from tools import (
-    search_places, get_place_details, remove_unicode, standardize_opening_hours, generate_tags,
-    get_exclusions_for_uninterest, convert_dietary_to_exclusions, generate_place_description,
-    geocode_location, reverse_geocode, analyze_interests_with_llm
-)
-from config import INTEREST_MAPPINGS, SPECIAL_INTEREST_CATEGORIES
-from tool_clustering import calculate_geo_cluster
-import time
-
 class PlacesResearchAgent:
     """
     Combined agent for researching and formatting Singapore attractions and food places.
@@ -148,75 +161,168 @@ class PlacesResearchAgent:
         # Known actions mapping
         self.known_actions = {
             "search_places": search_places,
-            "get_place_details": get_place_details
+            "get_place_details": get_place_details,
+            "evaluate_results_quality": lambda user_interests, user_uninterests, places=None: self.evaluate_results_quality(
+                places if places is not None else self.current_results,
+                user_interests,
+                user_uninterests,
+                self._extract_coordinates(places if places is not None else self.current_results)
+            ),
+            "map_interest_to_place_types": lambda interest: {
+                "interest": interest,
+                "place_types": map_interest_to_place_types(interest, self.client)
+            }
         }
+
+    def _extract_coordinates(self, places: List[Dict]) -> List[Dict]:
+        """Extract coordinates with geo clusters for geographic analysis."""
+        coordinates = []
+        for place in places:
+            location = place.get('location', {})
+            lat = location.get('latitude')
+            lng = location.get('longitude')
+
+            # Use existing calculate_geo_cluster function
+            cluster_id = calculate_geo_cluster(lat, lng) if lat and lng else 'unknown'
+
+            name = place.get('displayName', {})
+            if isinstance(name, dict):
+                name = name.get('text', 'Unknown')
+            else:
+                name = place.get('name', 'Unknown')
+
+            coordinates.append({
+                'name': name,
+                'lat': lat,
+                'lng': lng,
+                'cluster': cluster_id
+            })
+
+        return coordinates
+
+    def _is_food_place(self, place: Dict) -> bool:
+        """
+        Determine if a place is food-related based on types.
+        Uses FOOD_PLACE_TYPES from config.py for comprehensive classification.
+
+        Args:
+            place: Place dictionary with 'types' or 'type' field
+
+        Returns:
+            True if place is food-related, False otherwise
+        """
+        # Check types array (new format)
+        place_types = set(place.get('types', []))
+
+        # Check single type field (legacy format)
+        if not place_types and place.get('type'):
+            place_types = {place.get('type')}
+
+        return bool(FOOD_PLACE_TYPES & place_types)
 
         # Agent state for tracking requirements
         self.required_places = 0
         self.current_results_count = 0
     
     def _get_default_system_prompt(self) -> str:
-        """Default system prompt following thought-action-observation pattern."""
+        """ReAct system prompt for attraction search only (food handled separately via deterministic geo-cluster search)."""
         return """
-            You are a places and attractions research specialist. You run in a loop of Thought, Action, Observation.
-            At the end of the loop you output raw data results.
-            
-            Use Thought to describe your reasoning about the places and attractions research.
-            Use Action to run one of the actions available to you.
-            Observation will be the result of running those actions.
-            
-            INTEREST MAPPING RULES:
-            Before processing any interests, map them to the following standardized categories:
-            - tourist_attraction
-            - food
-            - cafe
-            - bar
-            - bakery
-            - park
-            - museum
-            - shopping_mall
-            - lodging
-            
-            Mapping examples:
-            - "parks" to park
-            - "museums" to museum
-            - "family" to tourist_attraction
-            - "educational" to museum or tourist_attraction
-            - "gardens" to park
-            - "nature" to park
-            - "culture" to museum or 'cultural food'
-            - "dining" to food
-            - "coffee" to cafe
-            - "shopping" to shopping_mall
-            - "accommodation" to lodging
-            
-            Special handling for food-related interests:
-            If an interest cannot be classified into the above categories but refers to food options 
-            (like "vegetarian", "halal", "vegan", "local cuisine"), rewrite it as "[interest] food".
-            Examples:
-            - "vegetarian" → "vegetarian food"
-            - "halal" → "halal food"
-            - "local cuisine" → "local food"
-            
-            Your available actions are:
-            1. search_places - search for places by type(s). Can handle single or multiple types with exclusions.
-            2. get_place_details - get comprehensive details about all places.
+You are an intelligent Singapore attractions research agent. You use ReAct (Reasoning + Acting) to adaptively search for attraction places only.
 
-            The 'interests' input from user maps to:
-            - 'included_types' parameter for search_places (single string or array of strings)
-            - 'excluded_types' parameter for search_places (string or array of types to exclude)
+## YOUR FOCUS
+Search ONLY for attraction places (museums, parks, temples, tourist attractions, etc.)
+DO NOT search for food places (restaurants, cafes, bars) - food is handled separately via deterministic geo-cluster search.
 
-            Finds attractions near accomodation location and find at least one food places per day.
-            
-            Set ratings filter to a 3.5 for shopping malls.
-            Set ratings filter to a 4.2 for food places.
-            Set ratings filter to a 4.0 for all other place types.
-            
-            Return raw data objects from API calls. Do not format the output.
-            Focus on comprehensive data collection based on user interests and accommodation location.
-            Always consider practical factors like location, ratings, accessibility needs, and user preferences.
-            Calculate required places based on pace and duration, and expand search if insufficient results are found.
-            """.strip()
+## REACT LOOP
+Run in cycles of: THOUGHT → ACTION → OBSERVATION → (repeat until requirements met)
+
+## 4 CORE PATTERNS
+
+### Pattern 1: Requirements Analysis
+THOUGHT: Analyze user trip (pace, duration, interests, uninterests)
+ACTION: Calculate exact needs (attractions count, geo-diversity)
+OBSERVATION: Establish search targets and constraints
+
+### Pattern 2: Adaptive Search with Quality Evaluation
+THOUGHT: Execute targeted search based on current gaps
+ACTION: search_places with specific types, radius, ratings
+OBSERVATION: Evaluate batch results with evaluate_results_quality
+THOUGHT: Assess diversity, relevance, geographic spread scores
+ACTION: Adapt strategy (expand radius, new types, lower ratings)
+OBSERVATION: Progressive refinement until targets met
+
+### Pattern 3: Interest Classification & Strategy Selection
+THOUGHT: Classify interests into location-based vs category-based
+- Location: "near Changi Airport", "around Orchard Road"
+- Category: "museums", "temples", "outdoor activities"
+ACTION: Prioritize location searches first, then categories
+OBSERVATION: Ensure location-specific requests honored
+THOUGHT: Respect user uninterests - exclude place types the user dislikes
+
+### Pattern 4: Deduplication with Intelligent Backfill
+THOUGHT: Check for duplicate attractions
+ACTION: Identify gaps in diversity (experience variety, categories)
+OBSERVATION: Missing categories found
+ACTION: Targeted backfill search for specific gaps
+OBSERVATION: Balanced, diverse final set
+
+## AVAILABLE ACTIONS
+
+1. **map_interest_to_place_types**(interest)
+- Map user interest/category to valid Google Place types
+- Use at START to convert user interests to search types
+- Use DURING SEARCH when you need more diversity or relevance
+- Example: If missing "historical place" → map_interest_to_place_types("historical place")
+- Returns 1-3 valid Google Place types from ATTRACTION_PLACE_TYPES
+
+2. **search_places**(location, included_types, radius, min_rating, max_results, excluded_types)
+- Search Google Places API for ATTRACTIONS ONLY
+- Use types from map_interest_to_place_types output
+- Use progressive expansion: start radius=10000m, rating=4.0
+- Expand radius OR lower rating if needed
+- Use excluded_types to filter out uninterests and non-attraction types
+
+3. **evaluate_results_quality**(places, user_interests, user_uninterests)
+- LLM evaluates diversity (0-10), relevance (0-10), geographic spread (0-10)
+- Returns missing_categories and recommendation
+- Use this to identify gaps, then call map_interest_to_place_types to fill them
+
+## SEARCH GUIDELINES
+
+**Geographic Distribution:**
+- Singapore has 7 main clusters: North, North East, East, South, West, Central, Downtown
+- "Near [location]" = 60% from that area + 40% from other clusters for diversity
+- "Around [location]" = 50% local + 50% broader
+- No location modifier = Search across all Singapore clusters
+- Aim for representation from multiple clusters (avoid 100% concentration in one area)
+
+**Ratings:**
+- Shopping malls: min 3.5, floor 3.0
+- General attractions: min 4.0, floor 3.0
+
+**Stopping Conditions:**
+- Target: {attractions_needed} attraction places
+- Acceptable range: 90-110% of target
+- Hard stop: 120% of target maximum
+- Quality threshold: If within range AND attraction requirements met, stop
+
+**Strategy:**
+1. Use map_interest_to_place_types to convert user interests to valid Google types
+2. Start narrow (user interests, high ratings, small radius)
+3. Evaluate quality after each batch (diversity, relevance, geography)
+4. If gaps detected, use map_interest_to_place_types for missing categories
+5. Ensure geographic spread across clusters
+6. Respect uninterests by excluding unwanted place types
+7. Adapt intelligently (expand radius/lower rating/new types)
+8. Stop when requirements met (don't overshoot)
+
+**Important:**
+- ALWAYS use map_interest_to_place_types to get valid Google Place types
+- DO NOT make up place types (e.g., "buddhist_temple" doesn't exist - use place_of_worship)
+- Let map_interest_to_place_types handle the mapping to valid types
+
+Return raw place data from API. Focus on meeting requirements with high-quality, diverse, geographically spread results.
+""".strip()
 
     def _define_places_tools(self) -> List[Dict]:
         """Define Google Places API v1 tools."""
@@ -276,88 +382,50 @@ class PlacesResearchAgent:
             {
                 "type": "function",
                 "function": {
-                    "name": "get_place_details",
-                    "description": "Get comprehensive detailed information about on a list of places",
+                    "name": "evaluate_results_quality",
+                    "description": "Evaluate search results quality using LLM to assess diversity, relevance, and geographic spread. Use this after collecting a batch of results to decide next search strategy. If places is not provided, will use current search results.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "place_ids": {
+                            "user_interests": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Google Places API place_ids"
+                                "description": "User's stated interests for comparison"
                             },
-                            "fields": {
+                            "user_uninterests": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Specific fields to retrieve",
-                                "default": ["name", "formatted_address", "geometry", "opening_hours", "rating", "website", "price_level", "type"]
+                                "description": "User's stated uninterests/dislikes to avoid"
+                            },
+                            "places": {
+                                "type": "array",
+                                "items": {"type": "object"},
+                                "description": "Optional list of places to evaluate. If not provided, uses current search results."
                             }
                         },
-                        "required": ["place_ids"]
+                        "required": ["user_interests", "user_uninterests"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "map_interest_to_place_types",
+                    "description": "Map a user interest/category to 1-3 valid Google Place types using ATTRACTION_PLACE_TYPES. Use this when you need to convert user interests (e.g., 'museums', 'temples', 'nature') into specific Google Place types for searching.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "interest": {
+                                "type": "string",
+                                "description": "User interest or category to map (e.g., 'museums', 'temples', 'parks')"
+                            }
+                        },
+                        "required": ["interest"]
                     }
                 }
             }
         ]
 
-    def __call__(self, message: str) -> Dict:
-        """Execute reasoning and return raw data."""
-        self.messages.append({"role": "user", "content": message})
-        result = self.execute()
-        self.messages.append({"role": "assistant", "content": str(result)})
-        return result
-    
-    def execute(self) -> Dict:
-        """Execute with function calling support, return raw data."""
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            temperature=self.temperature,
-            messages=self.messages,
-            tools=self.available_tools,
-            tool_choice="auto"
-        )
-        
-        message = response.choices[0].message
-        
-        # Handle function calls if present
-        if message.tool_calls:
-            # Add assistant message with tool calls
-            self.messages.append({
-                "role": "assistant",
-                "content": message.content,
-                "tool_calls": message.tool_calls
-            })
-            
-            all_tool_results = []
-            
-            # Execute tool calls
-            for tool_call in message.tool_calls:
-                tool_result = self._execute_tool_call(tool_call)
-                all_tool_results.append({
-                    "tool": tool_call.function.name,
-                    "args": json.loads(tool_call.function.arguments),
-                    "result": tool_result
-                })
-                
-                # Add tool result to messages
-                self.messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": json.dumps(tool_result, default=str)
-                })
-            
-            # Return raw data from tools
-            return {
-                "reasoning": message.content,
-                "tool_results": all_tool_results,
-                "raw_places": self._extract_places_from_results(all_tool_results)
-            }
-        
-        return {
-            "reasoning": message.content,
-            "tool_results": [],
-            "raw_places": []
-        }
-    
     def _execute_tool_call(self, tool_call) -> Dict[str, Any]:
         """Execute tool call and return raw results."""
         tool_name = tool_call.function.name
@@ -370,15 +438,396 @@ class PlacesResearchAgent:
         else:
             return {"error": f"Unknown tool: {tool_name}"}
     
-    def _extract_places_from_results(self, tool_results: List[Dict]) -> List[Dict]:
-        """Extract all place data from tool results."""
-        all_places = []
-        for result in tool_results:
-            if result["tool"] in ["search_places", "search_multiple_keywords"]:
-                places = result.get("result", [])
-                if isinstance(places, list):
-                    all_places.extend(places)
-        return all_places
+    # ========== REACT ORCHESTRATION METHODS ==========
+
+    def set_context(self, context: Dict):
+        """Set agent context with user requirements and constraints."""
+        self.context = context
+        self.current_results = []
+        self.start_time = context.get('start_time', time.time())
+
+    def check_timeout(self, max_seconds: int = 780) -> bool:
+        """Check if we've exceeded timeout (default 13 minutes)."""
+        if not hasattr(self, 'start_time'):
+            # If start_time not set, initialize it now
+            self.start_time = time.time()
+            return False
+        elapsed = time.time() - self.start_time
+        return elapsed > max_seconds
+
+    def requirements_met(self) -> bool:
+        """
+        Check if search requirements are satisfied.
+        Uses smart stopping logic to prevent overshooting target.
+        """
+        if not hasattr(self, 'context'):
+            return False
+
+        requirements = self.context.get('requirements', {})
+        attractions_needed = requirements.get('attractions_needed', 0)
+        food_needed = requirements.get('food_places_needed', 0)
+        total_needed = requirements.get('total_needed', 0)
+
+        current_count = len(self.current_results)
+
+        # Hard stop at 120% to prevent runaway (e.g., 45 → 54 max)
+        if current_count >= total_needed * 1.2:
+            logger.info(f"Hard stop: {current_count} places >= 120% of target ({total_needed * 1.2:.0f})")
+            return True
+
+        # If we're within 90-110% of target, check quality and balance
+        if total_needed * 0.9 <= current_count <= total_needed * 1.1:
+            # Count attractions vs food using _is_food_place helper
+            food_count = sum(1 for p in self.current_results if self._is_food_place(p))
+            attraction_count = current_count - food_count
+
+            # Check if both requirements are reasonably met (within 80%)
+            food_met = food_count >= food_needed * 0.8
+            attraction_met = attraction_count >= attractions_needed * 0.8
+
+            if food_met and attraction_met:
+                logger.info(f"Requirements met: {attraction_count}/{attractions_needed} attractions, {food_count}/{food_needed} food")
+                return True
+
+        # Not yet at target
+        return False
+
+    def evaluate_results_quality(self, places: List[Dict], user_interests: List[str], user_uninterests: List[str], coordinates: List[Dict] = None) -> Dict:
+        """
+        Use LLM to evaluate search results quality.
+
+        Args:
+            places: List of found places
+            user_interests: User's stated interests
+            user_uninterests: User's stated uninterests/dislikes to avoid
+            coordinates: Optional list of dicts with name, lat, lng, cluster for accurate geographic analysis
+
+        Returns:
+            Dict with quality scores and recommendations
+        """
+        if not places:
+            return {
+                "diversity_score": 0,
+                "relevance_score": 0,
+                "geographic_score": 0,
+                "missing_categories": user_interests if user_interests else ["general attractions"],
+                "recommendation": "expand_search"
+            }
+
+        # Prepare place summary for LLM
+        place_summary = [
+            f"{p.get('displayName', {}).get('text', p.get('name', 'Unknown'))} ({p.get('primaryType', 'unknown')})"
+            for p in places[:20]  # Limit to first 20 for token efficiency
+        ]
+
+        # Prepare geographic data if coordinates provided
+        geo_info = ""
+        if coordinates:
+            # Count places by cluster
+            cluster_counts = {}
+            for coord in coordinates[:20]:
+                cluster = coord.get('cluster', 'unknown')
+                cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
+
+            geo_info = f"""
+
+Actual Geographic Distribution (Singapore clusters):
+{chr(10).join([f'  {cluster}: {count} places' for cluster, count in sorted(cluster_counts.items())])}
+
+Sample locations (first 5):
+{chr(10).join([f"  {coord.get('name', 'Unknown')}: cluster={coord.get('cluster', 'unknown')}, lat={coord.get('lat', 0):.4f}, lng={coord.get('lng', 0):.4f}" for coord in coordinates[:5]])}
+"""
+
+        uninterests_text = f"\nUser uninterests (AVOID): {', '.join(user_uninterests)}" if user_uninterests else ""
+
+        prompt = f"""Evaluate these {len(places)} places for a Singapore trip.
+
+User interests: {', '.join(user_interests) if user_interests else 'general sightseeing'}{uninterests_text}
+Places found (sample): {', '.join(place_summary)}{geo_info}
+
+Score on:
+1. Diversity (0-10): Variety of experience types
+2. Relevance (0-10): Match to user interests and AVOID uninterests
+3. Geographic spread (0-10): Distribution across Singapore clusters (north, northeast, east, west, central, downtown, south)
+
+Return ONLY valid JSON with no markdown:
+{{
+    "diversity_score": 0,
+    "relevance_score": 0,
+    "geographic_score": 0,
+    "missing_categories": [],
+    "recommendation": "expand_search" | "sufficient" | "refine_types"
+}}"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+
+            result = json.loads(response.choices[0].message.content)
+            logger.info(f"Quality evaluation: Diversity={result.get('diversity_score')}/10, "
+                f"Relevance={result.get('relevance_score')}/10, "
+                f"Geographic={result.get('geographic_score')}/10")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in quality evaluation: {e}")
+            return {
+                "diversity_score": 5,
+                "relevance_score": 5,
+                "geographic_score": 5,
+                "missing_categories": [],
+                "recommendation": "continue"
+            }
+
+    def check_and_backfill(self, quality_result: Dict) -> List[Dict]:
+        """
+        Pattern 4: Analyze gaps and generate targeted backfill searches.
+
+        Args:
+            quality_result: Result from evaluate_results_quality()
+
+        Returns:
+            List of targeted search parameters to fill gaps
+        """
+        backfill_searches = []
+
+        # Extract missing categories from quality evaluation
+        missing_categories = quality_result.get('missing_categories', [])
+
+        if not missing_categories:
+            return backfill_searches
+
+        logger.info(f"PATTERN 4 (Backfill): Identified {len(missing_categories)} missing categories")
+
+        # Analyze current cluster distribution
+        cluster_distribution = {}
+        for place in self.current_results:
+            cluster = place.get('location', {}).get('latitude', 0)  # Simplified
+            cluster_id = 'unknown'
+            # Determine cluster from coordinates
+            if cluster:
+                lat = place.get('location', {}).get('latitude')
+                lng = place.get('location', {}).get('longitude')
+                if lat and lng:
+                    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
+                        if (bounds['lat_min'] <= lat <= bounds['lat_max'] and
+                            bounds['lon_min'] <= lng <= bounds['lon_max']):
+                            cluster_id = cluster_name
+                            break
+            cluster_distribution[cluster_id] = cluster_distribution.get(cluster_id, 0) + 1
+
+        # Identify underrepresented clusters
+        all_clusters = list(SINGAPORE_GEOCLUSTERS_POINTS.keys())
+
+        # Calculate target per cluster: aim for at least 10% of total places per cluster
+        # For 45 places / 7 clusters = ~6 places per cluster minimum
+        current_count = len(self.current_results)
+        min_per_cluster = max(2, current_count // 10)  # At least 2, or 10% of total
+
+        underrep_clusters = [c for c in all_clusters if cluster_distribution.get(c, 0) < min_per_cluster]
+
+        logger.info(f"PATTERN 4: Current distribution: {cluster_distribution}")
+        logger.info(f"PATTERN 4: Underrepresented clusters (< {min_per_cluster} places): {underrep_clusters}")
+
+        # Map missing categories to place types
+        for category in missing_categories[:3]:  # Limit to top 3
+            # Use the map_interest_to_place_types tool to get valid Google types
+            place_types = map_interest_to_place_types(category, self.client)
+
+            if not place_types:
+                place_types = ['tourist_attraction']  # Fallback
+
+            # Create targeted searches for underrepresented clusters
+            for cluster_name in underrep_clusters[:2]:  # Max 2 clusters
+                cluster_center = SINGAPORE_GEOCLUSTERS_POINTS.get(cluster_name, {'lat': 1.3521, 'lon': 103.8198})
+
+                search_params = {
+                    'location': {
+                        'lat': cluster_center['lat'],
+                        'lng': cluster_center['lon']
+                    },
+                    'included_types': place_types,
+                    'radius': 5000,  # Smaller radius for targeted search
+                    'min_rating': 3.8,  # Slightly lower to get more options
+                    'max_results': 10  # Limited results for gap filling
+                }
+
+                backfill_searches.append(search_params)
+                logger.info(f"PATTERN 4: Backfill search for '{category}' in {cluster_name} cluster")
+
+        return backfill_searches[:3]  # Max 3 backfill searches to avoid timeout
+
+    def execute_react_search(self, max_iterations: int = 15) -> Dict:
+        """
+        Execute ReAct loop for adaptive place search.
+
+        Returns:
+            Dict with reasoning trace and found places
+        """
+        if not hasattr(self, 'context'):
+            raise ValueError("Context not set. Call set_context() first.")
+
+        duration_days = self.context.get('duration_days')
+        requirements = self.context.get('requirements', {})
+        user_interests = self.context.get('user_interests', [])
+        user_uninterests = self.context.get('user_uninterests', [])
+        excluded_types = self.context.get('excluded_types', [])
+        accommodation = self.context.get('accommodation', {})
+
+        # Initialize ReAct prompt
+        initial_prompt = f"""Find ATTRACTION places for a {duration_days}-day Singapore trip.
+
+REQUIREMENTS:
+- Attractions needed: {requirements['attractions_needed']}
+- User interests: {', '.join(user_interests) if user_interests else 'general sightseeing'}
+- User uninterests/Excluded types: {', '.join(user_uninterests) if user_uninterests else 'none'}
+- Accommodation: {accommodation.get('name', 'Not specified')} at ({accommodation.get('lat')}, {accommodation.get('lng')})
+
+STRATEGY:
+1. Search ONLY for attractions (museums, parks, temples, etc.) - NOT food places
+2. Start with user interests if specified, AVOID uninterests
+3. Use progressive relaxation: exact match → related categories → general attractions
+4. Evaluate quality after each search batch
+5. Expand radius or lower ratings if needed
+6. Stop when attraction requirements met OR timeout (13 minutes)
+
+Begin searching now."""
+
+        self.messages.append({"role": "user", "content": initial_prompt})
+
+        iteration = 0
+        reasoning_trace = []
+
+        while iteration < max_iterations and not self.requirements_met() and not self.check_timeout():
+            iteration += 1
+            logger.info(f"\n=== ReAct Iteration {iteration}/{max_iterations} ===")
+
+            # Get LLM response with tool calling
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    temperature=self.temperature,
+                    messages=self.messages,
+                    tools=self.available_tools,
+                    tool_choice="auto"
+                )
+
+                message = response.choices[0].message
+
+                # Log thought/reasoning
+                if message.content:
+                    logger.info(f"THOUGHT: {message.content}")
+                    reasoning_trace.append({"iteration": iteration, "thought": message.content})
+
+                # Handle tool calls
+                if message.tool_calls:
+                    self.messages.append({
+                        "role": "assistant",
+                        "content": message.content,
+                        "tool_calls": message.tool_calls
+                    })
+
+                    for tool_call in message.tool_calls:
+                        tool_name = tool_call.function.name
+                        tool_args = json.loads(tool_call.function.arguments)
+
+                        # FIX #4: Enhanced ACTION logging with arguments
+                        args_summary = json.dumps({
+                            k: (v if not isinstance(v, (list, dict)) or len(str(v)) < 100 else f"{type(v).__name__}[{len(v) if isinstance(v, (list, dict)) else '...'}]")
+                            for k, v in tool_args.items()
+                        }, indent=2)
+                        logger.info(f"ACTION: {tool_name}({args_summary})")
+
+                        # Log includedTypes specifically for search_places to see what's being searched
+                        if tool_name == "search_places" and "included_types" in tool_args:
+                            included_types = tool_args["included_types"]
+                            if isinstance(included_types, list):
+                                logger.info(f"  -> includedTypes: {included_types}")
+                            else:
+                                logger.info(f"  -> includedTypes: [{included_types}]")
+
+                        tool_result = self._execute_tool_call(tool_call)
+
+                        # FIX #4: Enhanced OBSERVATION logging with detailed results
+                        if isinstance(tool_result, list):
+                            # Deduplicate by place_id
+                            existing_ids = {p.get('id') or p.get('place_id') for p in self.current_results}
+                            new_results = [p for p in tool_result if (p.get('id') or p.get('place_id')) not in existing_ids]
+                            self.current_results.extend(new_results)
+
+                            observation = f"Found {len(new_results)} new places (Total: {len(self.current_results)}/{self.context.get('requirements', {}).get('attractions_needed', 0) + self.context.get('requirements', {}).get('food_places_needed', 0)})"
+                            logger.info(f"OBSERVATION: {observation}")
+                        elif isinstance(tool_result, dict) and 'diversity_score' in tool_result:
+                            # Quality evaluation result
+                            observation = f"Quality scores - Diversity: {tool_result.get('diversity_score', 'N/A')}/10, Relevance: {tool_result.get('relevance_score', 'N/A')}/10, Geographic: {tool_result.get('geographic_score', 'N/A')}/10"
+                            logger.info(f"OBSERVATION: {observation}")
+                            if tool_result.get('missing_categories'):
+                                logger.info(f"  Missing categories: {', '.join(tool_result['missing_categories'][:5])}")
+
+                            # PATTERN 4: Check if backfill is needed
+                            if tool_result.get('missing_categories') and not self.requirements_met():
+                                logger.info(f"THOUGHT: Gaps detected. Initiating Pattern 4 backfill...")
+                                backfill_searches = self.check_and_backfill(tool_result)
+
+                                # Execute backfill searches immediately
+                                for search_params in backfill_searches:
+                                    try:
+                                        included_types = search_params.get('included_types')
+                                        logger.info(f"ACTION (Backfill): search_places")
+                                        logger.info(f"  -> includedTypes: {included_types}")
+                                        backfill_results = search_places(**search_params)
+
+                                        if backfill_results:
+                                            # Deduplicate
+                                            existing_ids = set(p.get('id') or p.get('place_id') for p in self.current_results)
+                                            new_backfill = [p for p in backfill_results if (p.get('id') or p.get('place_id')) not in existing_ids]
+
+                                            if new_backfill:
+                                                self.current_results.extend(new_backfill)
+                                                logger.info(f"OBSERVATION (Backfill): Added {len(new_backfill)} places (Total: {len(self.current_results)})")
+                                    except Exception as e:
+                                        logger.error(f"Backfill search failed: {e}")
+                        else:
+                            observation = str(tool_result)[:200]
+                            logger.info(f"OBSERVATION: {observation}")
+
+                        # Add tool result to messages
+                        self.messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": observation if isinstance(observation, str) else json.dumps(observation)
+                        })
+
+                        reasoning_trace.append({
+                            "iteration": iteration,
+                            "action": tool_name,
+                            "observation": observation
+                        })
+                else:
+                    # No tool calls, LLM thinks we're done
+                    logger.info("LLM indicated completion (no tool calls)")
+                    break
+
+            except Exception as e:
+                logger.error(f"Error in ReAct iteration {iteration}: {e}")
+                break
+
+        # Final status
+        logger.info(f"\n=== ReAct Search Complete ===")
+        logger.info(f"Iterations: {iteration}")
+        logger.info(f"Places found: {len(self.current_results)}")
+        logger.info(f"Requirements met: {self.requirements_met()}")
+
+        return {
+            "reasoning_trace": reasoning_trace,
+            "places_found": self.current_results,
+            "iterations": iteration,
+            "requirements_met": self.requirements_met()
+        }
 
     def calculate_required_places(self, pace: str, duration_days: int, attraction_multiplier: float = None, food_multiplier: float = None) -> dict:
         """
@@ -397,8 +846,6 @@ class PlacesResearchAgent:
         Returns:
             dict with attractions_needed, food_places_needed, total_needed
         """
-        from config import ATTRACTION_MULTIPLIER, FOOD_MULTIPLIER, SINGAPORE_GEOCLUSTERS_POINTS
-
         pace_mapping = {
             "slow": 2,
             "relaxed": 3,
@@ -487,6 +934,35 @@ class PlacesResearchAgent:
         logger.info(f"Mapped interests: {mapped}")
         return mapped
 
+    def get_auto_exclusions(self, user_interests: List[str]) -> List[str]:
+        """
+        Get place types that should be automatically excluded based on user interests.
+        Prevents irrelevant results (e.g., pet stores when searching for aquariums).
+
+        Args:
+            user_interests: User's stated interests
+
+        Returns:
+            List of place types to exclude
+        """
+        auto_exclusions = []
+
+        for interest in user_interests:
+            interest_lower = interest.lower().strip()
+
+            # Check if this interest has auto-exclusions
+            for key, exclusions in INTEREST_AUTO_EXCLUSIONS.items():
+                if key in interest_lower or interest_lower in key:
+                    auto_exclusions.extend(exclusions)
+
+        # Deduplicate
+        auto_exclusions = list(set(auto_exclusions))
+
+        if auto_exclusions:
+            logger.info(f"Auto-exclusions for interests: {auto_exclusions}")
+
+        return auto_exclusions
+
     def create_food_search_terms(self, food_interests: List[str], dietary_restrictions: List[str], days: int) -> List[str]:
         """
         Generate Google Places API food types based on food interests.
@@ -543,14 +1019,6 @@ class PlacesResearchAgent:
         # Return up to 3 types (Google Places API limit for includedTypes is 5, but we batch with others)
         return unique_types[:3]
 
-    def check_timeout(self, start_time: float, timeout_seconds: int = 780) -> bool:
-        """Check if execution is approaching timeout (13 minutes = 780 seconds)."""
-        elapsed = time.time() - start_time
-        if elapsed >= timeout_seconds:
-            logger.warning(f"Timeout reached: {elapsed:.1f}s")
-            return True
-        return False
-
     def search_food_by_geo_clusters(
         self,
         food_search_terms: List[str],
@@ -577,8 +1045,6 @@ class PlacesResearchAgent:
         Returns:
             List of food places distributed across all clusters
         """
-        from config import SINGAPORE_GEOCLUSTERS_POINTS, FOOD_SEARCH_PARAMS_BY_CLUSTER
-
         # Calculate target per cluster
         target_per_cluster = int(duration_days * food_multiplier)
         total_clusters = len(SINGAPORE_GEOCLUSTERS_POINTS)
@@ -603,7 +1069,7 @@ class PlacesResearchAgent:
             # Search each food term in this cluster
             for food_term in food_search_terms:
                 if len(cluster_results) >= target_per_cluster:
-                    print(f"✓ Cluster target reached: {len(cluster_results)}/{target_per_cluster}")
+                    print(f"[OK] Cluster target reached: {len(cluster_results)}/{target_per_cluster}")
                     break
 
                 # Convert lon to lng for consistency
@@ -633,14 +1099,14 @@ class PlacesResearchAgent:
             cluster_stats[cluster_name] = len(cluster_results)
             all_food_results.extend(cluster_results)
 
-            print(f"✓ {cluster_name}: {len(cluster_results)}/{target_per_cluster} food places")
+            print(f"[OK] {cluster_name}: {len(cluster_results)}/{target_per_cluster} food places")
 
         # Print summary
         print(f"\n{'='*60}")
         print(f"FOOD SEARCH SUMMARY (Geo-Cluster Distribution)")
         print(f"{'='*60}")
         for cluster_name, count in cluster_stats.items():
-            status = "✓" if count >= target_per_cluster else "⚠"
+            status = "[OK]" if count >= target_per_cluster else "[WARN]"
             print(f"{status} {cluster_name:12} {count:2}/{target_per_cluster} places")
         print(f"{'='*60}")
         print(f"Total food places: {len(all_food_results)}/{target_per_cluster * total_clusters}")
@@ -650,6 +1116,11 @@ class PlacesResearchAgent:
 
     def search_with_requirements(self, location, included_types, min_rating, max_results_needed, search_type='attraction', excluded_types=None, destination_city=None, initial_radius=None):
         """
+        Deterministic progressive search with radius expansion and rating relaxation.
+
+        Used by search_food_by_geo_clusters() for predictable, calculation-based food search.
+        For attractions, use execute_react_search() which adapts intelligently.
+
         Progressive search: Expand radius FIRST, then relax rating ONLY if needed
 
         Strategy progressively:
@@ -879,7 +1350,6 @@ class PlacesResearchAgent:
         low_carbon_score = None
         if carbon_type:
             try:
-                from singapore_onsite_carbon_score import get_place_carbon_details
                 details = get_place_carbon_details(carbon_type, num_people=1)
                 onsite_co2_kg = details.get("co2e_total_kg")
                 low_carbon_score = details.get("low_carbon_score")
@@ -1059,507 +1529,13 @@ class PlacesResearchAgent:
 
         return result
 
-
-# ## Places Research Agent - Formatting Implementation (DEPRECATED)
-# - Takes raw Google Places API data as input
-# - Transforms it into specified schema format required by the planning agent
-# - Sets null values for unavailable data
-
-class PlacesResearchFormattingAgent:
-    """
-    Specialized agent for formatting raw Google Places API v1 data into structured output.
-    Handles data from search_places/search_multiple_keywords and get_place_details.
-    Uses editorialSummary from Google Places API v1, or generates descriptions with LLM fallback.
-    """
-
-    def __init__(self, use_llm_for_all: bool = False):
-        # Initialize OpenAI client for complex formatting
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model_name = "gpt-4o"
-        self.temperature = 0.1  # Lower temperature for consistent formatting
-        self.use_llm_for_all = use_llm_for_all  # Option to use LLM for entire transformation
-
-    def format_response(self, reasoning_data: Dict) -> Dict:
-        """
-        Format the complete response from reasoning agent.
-        
-        Args:
-            reasoning_data: Raw data from reasoning agent containing:
-                - reasoning: The thought process
-                - tool_results: List of tool execution results
-                - raw_places: Extracted places from tool results
-        
-        Returns:
-            Formatted response with structured place data
-        """
-        # Extract raw places from the reasoning data
-        raw_places = reasoning_data.get('raw_places', [])
-        
-        # If raw_places is empty, try extracting from tool_results
-        if not raw_places:
-            tool_results = reasoning_data.get('tool_results', [])
-            for tool_result in tool_results:
-                if tool_result.get('tool') in ['search_places', 'search_multiple_keywords']:
-                    result = tool_result.get('result', [])
-                    if isinstance(result, list):
-                        raw_places.extend(result)
-        
-        logger.info(f"Processing {len(raw_places)} raw places for formatting")
-        
-        # Format the places using the existing format_places method
-        formatted_places = self.format_places(raw_places, {})
-        
-        return {
-            "reasoning": reasoning_data.get('reasoning'),
-            "places_found": len(formatted_places),
-            "formatted_places": formatted_places
-        }
-    
-    def format_places(self, search_results: List[Dict] = None, details_results: Dict[str, Dict] = None) -> List[Dict]:
-        """
-        Format raw Google Places API data into structured schema.
-        
-        Args:
-            search_results: List of raw place data from search_places/search_multiple_keywords
-            details_results: Dict of place_id -> details from get_place_details
-            
-        Returns:
-            List of formatted place dictionaries according to schema
-        """
-        # Option 1: Use full LLM transformation (if enabled)
-        if self.use_llm_for_all:
-            return self._format_places_llm_only(search_results, details_results)
-        
-        # Option 2: Use hybrid approach (default - more efficient)
-        formatted_places = []
-        
-        # Process search results
-        if search_results:
-            for place in search_results:
-                place_id = place.get('place_id')
-                
-                # Get details if available
-                details = details_results.get(place_id, {}) if details_results else {}
-                
-                # Merge search and details data
-                formatted_place = self._format_single_place(place, details)
-                formatted_places.append(formatted_place)
-        
-        # If we only have details results (no search results)
-        elif details_results:
-            for place_id, details in details_results.items():
-                formatted_place = self._format_single_place({}, details)
-                # Ensure place_id is set
-                if not formatted_place.get('place_id'):
-                    formatted_place['place_id'] = place_id
-                formatted_places.append(formatted_place)
-
-        return formatted_places
-    
-    def _format_single_place(self, search_data: Dict, details_data: Dict) -> Dict:
-        """
-        Format a single place from raw API data to structured schema.
-        Combines data from both search and details API responses.
-        """
-        # Extract place_id and name (prefer from search, fallback to details)
-        place_id = search_data.get('place_id') or details_data.get('place_id')
-        name = search_data.get('name') or details_data.get('name', 'Unknown Place')
-        
-        # Extract types (use first type as primary if available)
-        types = search_data.get('types', []) or details_data.get('types', [])
-        primary_type = types[0] if types else 'tourist_attraction'
-        
-        # Extract geo coordinates
-        geo = self._extract_geo(search_data, details_data)
-
-        # Calculate geo_cluster_id
-        geo_cluster_id = calculate_geo_cluster(geo['latitude'], geo['longitude'])
-        
-        # Extract address (prefer details formatted_address, fallback to vicinity)
-        address = (details_data.get('formatted_address') or 
-            search_data.get('vicinity') or 
-            search_data.get('formatted_address'))
-        
-        # Extract rating (can be in either response)
-        rating = details_data.get('rating') or search_data.get('rating')
-        
-        # Extract cost from price_level if available
-        price_level = details_data.get('price_level') or search_data.get('price_level')
-        cost_sgd = self._map_price_level_to_cost(price_level)
-        
-        # Extract website from details
-        website = details_data.get('website')
-        
-        # Extract opening hours for LLM processing
-        opening_hours_raw = details_data.get('opening_hours', {})
-        
-        # Format the place according to schema
-        formatted_place = {
-            "place_id": place_id,
-            "name": name,
-            "type": primary_type,
-            "cost_sgd": cost_sgd,
-            "price_level": price_level,
-            "onsite_co2_kg": None,  # Ignored
-            "geo": geo,
-            "geo_cluster_id": geo_cluster_id,
-            "address": address,
-            "nearest_mrt": None,  # Ignored
-            "opening_hours": {
-                "monday": None,
-                "tuesday": None,
-                "wednesday": None,
-                "thursday": None,
-                "friday": None,
-                "saturday": None,
-                "sunday": None
-            },  # Will be formatted by LLM if data available
-            "duration_recommended_minutes": None,  # Ignored
-            "ticket_price_sgd": {
-                "adult": None,
-                "child": None,
-                "senior": None
-            },  # Ignored
-            "vegetarian_friendly": None,  # Ignored
-            "low_carbon_score": None,  # Ignored
-            "description": None,  # Will be set from editorialSummary or LLM
-            "links": {
-                "official": website,
-                "reviews": None  # Ignored
-            },
-            "rating": rating,
-            "tags": [],  # Will be set from rule-based + LLM tag generation
-            "_raw_types": types,  # Store for reference
-            "_raw_opening_hours": opening_hours_raw  # Store for reference
-        }
-        
-        return formatted_place
-    
-    def _extract_json_from_markdown(self, text: str) -> str:
-        """Extract JSON from markdown code blocks."""
-        import re
-        
-        # Remove ```json and ``` markers
-        if '```json' in text:
-            pattern = r'```json\s*(.*?)\s*```'
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                return match.group(1).strip()
-        
-        # Remove ``` markers without json
-        if text.startswith('```') and text.endswith('```'):
-            lines = text.split('\n')
-            if lines[0] == '```' or lines[0].startswith('```'):
-                lines = lines[1:]
-            if lines[-1] == '```':
-                lines = lines[:-1]
-            return '\n'.join(lines).strip()
-        
-        return text.strip()
-    
-    def _format_places_llm_only(self, 
-                                search_results: List[Dict] = None,
-                                details_results: Dict[str, Dict] = None) -> List[Dict]:
-        """
-        Use LLM for complete transformation (fallback method).
-        Less efficient but more flexible for handling unexpected data formats.
-        """
-        # Combine all data
-        combined_data = []
-        
-        if search_results:
-            for place in search_results:
-                place_id = place.get('place_id')
-                if details_results and place_id in details_results:
-                    # Merge search and details
-                    merged = {**place, **details_results[place_id]}
-                    combined_data.append(merged)
-                else:
-                    combined_data.append(place)
-        elif details_results:
-            combined_data = list(details_results.values())
-        
-        if not combined_data:
-            return []
-        
-        try:
-            # Use LLM for complete transformation
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": self._get_full_transformation_prompt()},
-                    {"role": "user", "content": f"Transform these places:\n{json.dumps(combined_data, indent=2)}"}
-                ],
-                temperature=self.temperature
-            )
-            
-            result_text = self._extract_json_from_markdown(response.choices[0].message.content)
-            result = json.loads(result_text)
-            return result if isinstance(result, list) else []
-            
-        except Exception as e:
-            logger.error(f"Error in LLM transformation: {e}")
-            # Fallback to hybrid approach
-            self.use_llm_for_all = False  # Prevent infinite recursion
-            result = self.format_places(search_results, details_results)
-            self.use_llm_for_all = True  # Restore original setting
-            return result
-    
-    def _extract_geo(self, search_data: Dict, details_data: Dict) -> Optional[Dict]:
-        """Extract geo coordinates from either search or details data."""
-        # Try search data first
-        if search_data.get('geometry'):
-            location = search_data['geometry'].get('location', {})
-            if location:
-                return {
-                    "latitude": location.get('lat'),
-                    "longitude": location.get('lng')
-                }
-        
-        # Try details data
-        if details_data.get('geometry'):
-            location = details_data['geometry'].get('location', {})
-            if location:
-                return {
-                    "latitude": location.get('lat'),
-                    "longitude": location.get('lng')
-                }
-        
-        return None
-    
-    def _map_price_level_to_cost(self, price_level: Optional[int]) -> Optional[int]:
-        """Map Google's price level (0-4) to cost range."""
-        if price_level is None:
-            return None
-        
-        price_mapping = {
-            0: 0,  # Free or $0-5
-            1: 1,  # $5-15
-            2: 2,  # $15-30
-            3: 3,  # $30-60
-            4: 4   # $60+
-        }
-        
-        return price_mapping.get(price_level, None)
-    
-    def _get_full_transformation_prompt(self) -> str:
-        """
-        Full system prompt for complete LLM-based transformation.
-        """
-        return """
-            You are a data transformation assistant. Your task is to take a list of Google Places API JSON objects and convert each object into the following custom attraction format.
-            
-            - If a field from the custom format is not available in the input data, set it to Python's None. 
-            - Use the "types" field from Google Places as "tags" in the output.
-            - Use the "geometry.location.lat" and "geometry.location.lng" fields for latitude and longitude.
-            - Use the "formatted_address" field for address, fallback to "vicinity" if not available.
-            - Map the primary type to standard types (restaurant/food→"food", park→"park", museum/art_gallery→"museum", hotel/lodging→"accommodation", else→"attraction").
-            - Opening hours should be formatted as "HH:MM-HH:MM" or "Open 24 hours" from weekday_text.
-            - Map price_level (0-4) to cost_sgd (0=free, 1=$5-15, 2=$15-30, 3=$30-60, 4=$60+).
-            - Generate engaging descriptions for tourists.
-            - Set geo_cluster_id based on coordinates (lat>1.35→north, lat<1.35→south, lng>103.8→east, lng<103.8→west, central if between).
-            """.strip()
-
-class PlacesClusteringAgent:
-    """
-    Agent for clustering attractions geographically and thematically for optimal travel planning.
-    Groups places by geo_cluster_id and calculates travel connections with accommodation.
-    """
-
-    def __init__(self, num_travelers: int = 1):
-        self.accommodation_location = None
-        self.num_travelers = num_travelers  # Total number of travelers (adults + children)
-        self.cluster_mapping = {
-            "central": {"name": "Central Singapore"},
-            "north": {"name": "Northern Singapore"},
-            "south": {"name": "Southern Singapore"},
-            "east": {"name": "Eastern Singapore"},
-            "west": {"name": "Western Singapore"}
-        }
-
-    def cluster_places(self, places_data: Dict, accommodation_location: Dict) -> Dict:
-        """
-        Cluster places geographically and add travel connections.
-
-        Args:
-            places_data: Formatted places data from PlacesResearchFormattingAgent
-            accommodation_location: Dict with lat, lng of accommodation
-
-        Returns:
-            Clustered data with travel connections and modes
-        """
-        self.accommodation_location = accommodation_location
-        places = places_data.get('formatted_places', [])
-
-        if not places:
-            return self._create_empty_clusters_response(places_data)
-
-        # Group places by geo_cluster_id
-        clusters = self._group_by_geo_cluster(places)
-
-        # Calculate travel connections for each cluster
-        clustered_results = []
-        for cluster_id, cluster_places in clusters.items():
-            cluster_data = self._create_cluster_data(cluster_id, cluster_places)
-            clustered_results.append(cluster_data)
-
-        # Sort clusters by priority (central first)
-        clustered_results.sort(key=lambda x: self.cluster_mapping.get(x['cluster_id'], {}).get('priority', 999))
-
-        return {
-            "reasoning": places_data.get('reasoning'),
-            "places_found": places_data.get('places_found', len(places)),
-            "total_clusters": len(clustered_results),
-            "accommodation": {
-                "location": accommodation_location,
-                "geo_cluster_id": calculate_geo_cluster(accommodation_location['latitude'], accommodation_location['longitude'])
-            },
-            "clustered_places": clustered_results
-        }
-
-    def _group_by_geo_cluster(self, places: List[Dict]) -> Dict[str, List[Dict]]:
-        """Group places by their geo_cluster_id."""
-        clusters = {}
-        for place in places:
-            cluster_id = place.get('geo_cluster_id', 'unknown')
-            if cluster_id not in clusters:
-                clusters[cluster_id] = []
-            clusters[cluster_id].append(place)
-        return clusters
-
-    def _create_cluster_data(self, cluster_id: str, places: List[Dict]) -> Dict:
-        """Create cluster data with travel connections."""
-        cluster_info = self.cluster_mapping.get(cluster_id, {"name": f"Unknown Cluster ({cluster_id})", "priority": 999})
-
-        # Calculate travel connections for each place
-        places_with_travel = []
-        for place in places:
-            place_with_travel = place.copy()
-            travel_info = self._calculate_travel_to_place(place)
-            place_with_travel['travel_from_accommodation'] = travel_info
-            places_with_travel.append(place_with_travel)
-
-        # Sort places within cluster by distance from accommodation
-        places_with_travel.sort(key=lambda x: x['travel_from_accommodation']['distance_km'])
-
-        return {
-            "cluster_id": cluster_id,
-            "cluster_name": cluster_info["name"],
-            "places_count": len(places_with_travel),
-            "average_distance_km": round(sum(p['travel_from_accommodation']['distance_km'] for p in places_with_travel) / len(places_with_travel), 2),
-            "recommended_travel_mode": self._get_cluster_recommended_mode(places_with_travel),
-            "places": places_with_travel
-        }
-
-    def _calculate_travel_to_place(self, place: Dict) -> Dict:
-        """Calculate travel information from accommodation to place."""
-        place_geo = place.get('geo', {})
-        place_lat = place_geo.get('latitude')
-        place_lng = place_geo.get('longitude')
-
-        if not place_lat or not place_lng or not self.accommodation_location:
-            return self._create_default_travel_info()
-
-        # Calculate distance using Haversine formula
-        # Handle both 'lng' and 'lon' formats for accommodation location
-        acc_lng = self.accommodation_location.get('lng') or self.accommodation_location.get('lon')
-        distance_km = self._haversine_distance(
-            self.accommodation_location.get('lat'),
-            acc_lng,
-            place_lat,
-            place_lng
-        )
-
-        # Determine travel modes and times
-        travel_modes = self._calculate_travel_modes(distance_km)
-
-        return {
-            "distance_km": round(distance_km, 2),
-            "travel_modes": travel_modes,
-            "recommended_mode": self._get_recommended_mode(distance_km)
-        }
-
-    def _haversine_distance(self, lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-        """Calculate distance between two points using Haversine formula."""
-        # Convert to radians
-        lat1, lng1, lat2, lng2 = map(math.radians, [lat1, lng1, lat2, lng2])
-
-        # Haversine formula
-        dlat = lat2 - lat1
-        dlng = lng2 - lng1
-        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng/2)**2
-        c = 2 * math.asin(math.sqrt(a))
-
-        # Earth radius in kilometers
-        earth_radius_km = 6371
-        return earth_radius_km * c
-
-    def _get_cluster_recommended_mode(self, places: List[Dict]) -> str:
-        """Get recommended mode for entire cluster based on distances."""
-        if not places:
-            return "MRT"
-
-        avg_distance = sum(p['travel_from_accommodation']['distance_km'] for p in places) / len(places)
-        return self._get_recommended_mode(avg_distance)
-
-    def _create_empty_clusters_response(self, places_data: Dict) -> Dict:
-        """Create response when no places to cluster."""
-        return {
-            "reasoning": places_data.get('reasoning'),
-            "places_found": 0,
-            "total_clusters": 0,
-            "accommodation": {
-                "location": self.accommodation_location,
-                "geo_cluster_id": "unknown"
-            },
-            "clustered_places": []
-        }
-
-# ## Simple Function Handler
-
-def fetch_place_enrichments(places: List[Dict], fetch_details: bool = True) -> Dict:
-    """
-    Fetch place details for a list of places.
-    Description generation happens later in format_results using editorialSummary or generate_place_description.
-
-    Args:
-        places: List of place dictionaries with 'id' keys (format: "places/{place_id}")
-        fetch_details: Whether to fetch Google Place details (default: True)
-
-    Returns:
-        Dict with 'details' key containing place details
-        {
-            'details': {place_id: details_dict, ...}
-        }
-    """
-    result = {'details': {}}
-
-    if not places or not fetch_details:
-        return result
-
-    print(f"Fetching details for {len(places)} places...")
-
-    # Extract place IDs (API v1 format: "places/{place_id}")
-    place_ids = []
-    for p in places:
-        place_id = p.get('id', '')
-        if place_id:
-            # Ensure place_id has "places/" prefix (required by API v1)
-            if not place_id.startswith('places/'):
-                place_id = f"places/{place_id}"
-            place_ids.append(place_id)
-
-    if place_ids:
-        # Fetch details (internally rate-limited to 5/sec)
-        result['details'] = get_place_details(place_ids)
-        print(f"Fetched details for {len(result['details'])} places")
-
-    return result
-
-
 def research_places(input_file: str, output_file: str = None, session_id: str = None) -> dict:
     """
-    Simple function handler to research and format Singapore places.
+    Research and format Singapore places using ReAct pattern with deterministic food search.
+
+    Strategy:
+    - Attractions: ReAct intelligent search (adaptive, LLM-driven)
+    - Food: Deterministic geo-cluster search (7 clusters x days x 1.0)
 
     Args:
         input_file: Path to input JSON file
@@ -1570,395 +1546,207 @@ def research_places(input_file: str, output_file: str = None, session_id: str = 
         Dictionary with formatted places
 
     Example:
-        results = research_places('inputs/simple_input.json', session_id='f312ea72')
+        results = research_places('inputs/input.json')
     """
-    import time
-    from datetime import datetime
-    from config import SINGAPORE_GEOCLUSTERS_POINTS, FOOD_SEARCH_PARAMS_BY_CLUSTER
-
     # Load input
     input_data = load_input_file(input_file)
     if not input_data:
         return {"error": "Failed to load input file"}
 
-    # Extract parameters from requirements section
+    # Extract parameters
     requirements_data = input_data.get('requirements', {})
-    destination_city = requirements_data.get('destination_city', 'Singapore')
     pace = requirements_data.get('pace', 'moderate')
     duration_days = requirements_data.get('duration_days', 1)
     location = requirements_data.get('optional', {}).get('accommodation_location', {})
 
-    # Extract travelers count for carbon calculation
+    # Get travelers
     travelers = requirements_data.get('travelers', {})
-    adults = travelers.get('adults')
-    children = travelers.get('children')
+    num_travelers = (travelers.get('adults', 0) + travelers.get('children', 0)) or 1
 
-    # Calculate total travelers only if both values exist, otherwise pass None (defaults to 1 in calculator)
-    if adults is not None and children is not None:
-        num_travelers = adults + children
-    else:
-        num_travelers = None  # Will default to 1 in calculator
-
-    # Initialize agent with travelers count
-    agent = PlacesResearchAgent(num_travelers=num_travelers if num_travelers else 1)
+    # Initialize agent
+    agent = PlacesResearchAgent(num_travelers=num_travelers)
     start_time = time.time()
+
+    # Get interests and exclusions
     user_interests = requirements_data.get('optional', {}).get('interests', [])
+    if isinstance(user_interests, str):
+        user_interests = [user_interests]
+
     user_uninterests = requirements_data.get('optional', {}).get('uninterests', [])
-    dietary_restrictions = requirements_data.get('optional', {}).get('dietary_restrictions', [])
-    if isinstance(dietary_restrictions, str):
-        dietary_restrictions = [dietary_restrictions]
     if isinstance(user_uninterests, str):
         user_uninterests = [user_uninterests]
 
-    # Check if lat/lng are available, if not, geocode the neighbourhood
-    if location and ('lat' not in location or location.get('lat') is None):
-        neighbourhood = location.get('neighbourhood') or location.get('neighborhood')
-        if neighbourhood:
-            print(f"\n=== Geocoding neighbourhood '{neighbourhood}' (lat/lng not provided) ===")
-            geocoded = geocode_location(neighbourhood, country=destination_city)
-            if geocoded:
-                location['lat'] = geocoded['lat']
-                location['lng'] = geocoded['lng']
-                location['place_id'] = geocoded.get('place_id')
-                location['name'] = geocoded.get('place_name')
-                print(f"[OK] Using geocoded coordinates: ({location['lat']:.4f}, {location['lng']:.4f})")
-                print(f"[OK] Added place_id: {location.get('place_id')}, name: {location.get('name')}\n")
-            else:
-                print(f"[ERROR] Failed to geocode '{neighbourhood}'. Please provide lat/lng manually.")
-                return {"error": f"Could not geocode neighbourhood '{neighbourhood}'"}
-        else:
-            print("[ERROR] No lat/lng or neighbourhood provided in accommodation_location.")
-            return {"error": "accommodation_location must have either lat/lng or neighbourhood"}
-
-    # Handle both 'lon' and 'lng' formats
-    if location and 'lon' in location and 'lng' not in location:
-        location['lng'] = location['lon']
-
-    # If lat/lng are present but place_id/name are missing, reverse geocode to get them
-    if location and location.get('lat') is not None and location.get('lng') is not None:
-        if not location.get('place_id') or not location.get('name'):
-            print(f"\n=== Reverse geocoding to get place details for coordinates ({location['lat']:.4f}, {location['lng']:.4f}) ===")
-            reverse_geocoded = reverse_geocode(location['lat'], location['lng'])
-            if reverse_geocoded:
-                if not location.get('place_id'):
-                    location['place_id'] = reverse_geocoded.get('place_id')
-                if not location.get('name'):
-                    location['name'] = reverse_geocoded.get('name')
-                print(f"[OK] Added place_id: {location.get('place_id')}, name: {location.get('name')}\n")
-            else:
-                print(f"[WARNING] Could not reverse geocode coordinates, place_id and name will remain empty\n")
-
     # Calculate requirements
     requirements = agent.calculate_required_places(pace, duration_days)
-    print(f"Requirements: {requirements['attractions_needed']} attractions + {requirements['food_places_needed']} food = {requirements['total_needed']} total")
 
-    # Analyze user interests with LLM to separate location-based and category-based interests
-    location_based_interests = []
-    category_based_interests = []
+    # Get auto-exclusions based on interests (e.g., exclude pet_store when searching for aquarium)
+    auto_exclusions = agent.get_auto_exclusions(user_interests)
 
-    if user_interests:
-        analyzed_interests = analyze_interests_with_llm(user_interests, agent.client)
-        for item in analyzed_interests:
-            if item.get('type') == 'location':
-                location_based_interests.append(item)
-            else:
-                category_based_interests.append(item)
+    # Set context and execute ReAct
+    agent.set_context({
+        'duration_days': duration_days,
+        'requirements': requirements,
+        'user_interests': user_interests,
+        'user_uninterests': user_uninterests,
+        'excluded_types': auto_exclusions,  # Use auto-exclusions
+        'accommodation': location,
+        'start_time': start_time,
+    })
 
-    # Convert uninterests and dietary restrictions to exclusions FIRST (before mapping interests)
-    excluded_types_from_uninterests = []
-    if user_uninterests:
-        for uninterest in user_uninterests:
-            excluded_types_from_uninterests.extend(get_exclusions_for_uninterest(uninterest))
-        excluded_types_from_uninterests = list(set(excluded_types_from_uninterests))
+    logger.info("\\n=== Starting ReAct Search (Attractions Only) ===")
+    react_result = agent.execute_react_search(max_iterations=15)
 
-    # Map category-based interests to place types
-    category_interest_strings = [item.get('original', '') for item in category_based_interests]
-    mapped_interests = agent.map_interests(category_interest_strings) if category_interest_strings else []
+    attraction_results = react_result['places_found']
+    logger.info(f"ReAct found {len(attraction_results)} attraction place(s)")
 
-    # Filter out any mapped interests that are in excluded types
-    mapped_interests = [interest for interest in mapped_interests if interest not in excluded_types_from_uninterests]
+    # ===================================================================
+    # DETERMINISTIC FOOD SEARCH (Geo-Cluster Based)
+    # ===================================================================
+    logger.info("\\n=== Starting Deterministic Food Search ===")
 
-    # If no interests at all, use default
-    if not mapped_interests and not location_based_interests:
-        mapped_interests = ['tourist_attraction']
+    # Extract food-related interests and dietary restrictions
+    dietary_restrictions = requirements_data.get('optional', {}).get('dietary_restrictions', [])
+    if isinstance(dietary_restrictions, str):
+        dietary_restrictions = [dietary_restrictions]
 
-    # Core attraction types - priority order
-    core_types_priority = [
-        'tourist_attraction', 'amusement_park', 'museum', 'zoo', 'aquarium', 'park', 'art_gallery', 'shopping_mall'
-    ]
+    user_uninterests = requirements_data.get('optional', {}).get('uninterests', [])
+    if isinstance(user_uninterests, str):
+        user_uninterests = [user_uninterests]
 
-    core_types_secondary = [
-        'point_of_interest', 'church', 'hindu_temple', 'mosque', 'synagogue', 'department_store'
-    ]
-
-    # User's interests ALWAYS come first (highest priority)
-    # Then add core types to ensure at least 5 types total
-    for core_type in core_types_priority:
-        if core_type not in mapped_interests and core_type not in excluded_types_from_uninterests:
-            mapped_interests.append(core_type)
-
-    # Add secondary core types
-    for core_type in core_types_secondary:
-        if core_type not in mapped_interests and core_type not in excluded_types_from_uninterests:
-            mapped_interests.append(core_type)
-
-    print(f"Mapped interests (user first, then core): {mapped_interests[:7]}... (total: {len(mapped_interests)} types)")
-
-    excluded_types_from_dietary = convert_dietary_to_exclusions(dietary_restrictions) if dietary_restrictions else []
-
-    # Combine all exclusions (for attractions search)
-    attraction_excluded_types = list(set(excluded_types_from_uninterests))
-
-    # Combine all exclusions (for food search)
-    food_excluded_types = list(set(excluded_types_from_uninterests + excluded_types_from_dietary))
-
-    print(f"Excluded types (attractions): {attraction_excluded_types}")
-    print(f"Excluded types (food): {food_excluded_types}")
-
-    # Search attractions using batch search (array of types)
-    print(f"\n=== Searching for Attractions ===")
-    attraction_results = []
-
-    # FIRST: Search for location-based interests (e.g., "exploring near Changi Airport")
-    if location_based_interests:
-        print(f"\n--- Location-based interests ({len(location_based_interests)}) ---")
-        for loc_interest in location_based_interests:
-            if agent.check_timeout(start_time):
-                break
-
-            original = loc_interest.get('original', '')
-            location_query = loc_interest.get('location_query', '')
-
-            print(f"\nSearching near '{location_query}' (from interest: '{original}')")
-
-            # Geocode the location
-            coords = geocode_location(location_query, country=destination_city)
-            if not coords:
-                print(f"  [ERROR] Could not find location '{location_query}', skipping...")
-                continue
-
-            # Search near this location with core attraction types
-            search_location = {'lat': coords['lat'], 'lng': coords['lng']}
-            search_types = core_types_priority[:5]  # Use top 5 core types
-
-            print(f"  Searching for {search_types} near ({coords['lat']:.4f}, {coords['lng']:.4f})")
-
-            # Calculate how many more attractions we need
-            remaining_needed = requirements['attractions_needed'] - len(attraction_results)
-            if remaining_needed <= 0:
-                print(f"  Already have enough attractions ({len(attraction_results)}/{requirements['attractions_needed']})")
-                break
-
-            results = agent.search_with_requirements(
-                search_location, search_types, 4.0,
-                remaining_needed,
-                search_type='attraction',
-                excluded_types=attraction_excluded_types,
-                destination_city=destination_city
-            )
-
-            # Deduplicate with existing results
-            existing_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
-            new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
-
-            attraction_results.extend(new_results)
-            print(f"  Found {len(new_results)} new attractions near '{location_query}' (total: {len(attraction_results)}/{requirements['attractions_needed']})")
-
-    # SECOND: Search for category-based interests near accommodation
-    if len(attraction_results) < requirements['attractions_needed']:
-        print(f"\n--- Category-based search (batch) ---")
-
-        # Google Places API searchNearby: maximum 5 types in includedTypes
-        batch_size = min(5, len(mapped_interests))
-        search_types = mapped_interests[:batch_size]
-
-        print(f"Searching for types (max 5): {search_types}")
-
-        # Use default min_rating 4.0 for attractions (3.5 if all are shopping malls)
-        has_shopping_mall = 'shopping_mall' in search_types
-        min_rating = 3.5 if has_shopping_mall and len(search_types) == 1 else 4.0
-
-        # Calculate how many more we need
-        remaining_needed = requirements['attractions_needed'] - len(attraction_results)
-
-        # Search with array of types - API will return mixed results
-        results = agent.search_with_requirements(
-            location, search_types, min_rating,
-            remaining_needed,
-            search_type='attraction',
-            excluded_types=attraction_excluded_types,
-            destination_city=destination_city
-        )
-
-        # Deduplicate with existing results
-        existing_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
-        new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
-
-        attraction_results.extend(new_results)
-        print(f"Found {len(new_results)} new from batch search (total: {len(attraction_results)}/{requirements['attractions_needed']})\n")
-
-    # Fallback mechanism: if still not enough results, try broader search
-    if len(attraction_results) < requirements['attractions_needed']:
-        print(f"\n=== Insufficient results ({len(attraction_results)}/{requirements['attractions_needed']}). Trying fallback search ===")
-
-        if not agent.check_timeout(start_time):
-            # Try broader types that weren't in the initial batch
-            remaining_types = mapped_interests[batch_size:batch_size+5]  # Next 5 types
-
-            if remaining_types:
-                print(f"Trying additional types: {remaining_types}")
-                results = agent.search_with_requirements(
-                    location, remaining_types, 4.0,
-                    requirements['attractions_needed'] - len(attraction_results),
-                    search_type='attraction',
-                    excluded_types=attraction_excluded_types,
-                    destination_city=destination_city
-                )
-
-                # Deduplicate with existing results
-                existing_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
-                new_results = [p for p in results if (p.get('id') or p.get('place_id')) not in existing_ids]
-
-                attraction_results.extend(new_results)
-                print(f"Added {len(new_results)} new places (total: {len(attraction_results)}/{requirements['attractions_needed']})\n")
-
-    # Search food - extract food-related interests from user interests
+    # Extract food interests from user interests
     food_interests = [i for i in user_interests if any(
         food_kw in str(i).lower() for food_kw in ['restaurant', 'cafe', 'food', 'dining', 'hawker', 'bar', 'bakery']
     )]
 
+    # Generate food search terms
     food_search_terms = agent.create_food_search_terms(food_interests, dietary_restrictions, duration_days)
-    print(f"Food interests: {food_interests}")
-    print(f"Food search terms: {food_search_terms}")
+    logger.info(f"Food interests: {food_interests}")
+    logger.info(f"Food search terms: {food_search_terms}")
 
-    print(f"\n=== Searching for Food Places Across Geo Clusters ===")
-    # Use geo-cluster distribution search (searches all 7 Singapore regions)
+    # Get food exclusions from dietary restrictions and uninterests
+    food_excluded_types = []
+    for restriction in dietary_restrictions:
+        food_excluded_types.extend(DIETARY_EXCLUSIONS.get(restriction.lower(), []))
+
+    # Add food-related uninterests to exclusions
+    food_uninterests = [u for u in user_uninterests if any(
+        food_kw in str(u).lower() for food_kw in ['restaurant', 'cafe', 'food', 'dining', 'hawker', 'bar', 'bakery']
+    )]
+    food_excluded_types.extend(food_uninterests)
+
+    # Run deterministic geo-cluster food search
     food_results = agent.search_food_by_geo_clusters(
         food_search_terms=food_search_terms,
         duration_days=duration_days,
         food_multiplier=requirements['food_multiplier'],
-        excluded_types=food_excluded_types,
-        destination_city=destination_city
+        excluded_types=food_excluded_types if food_excluded_types else None,
+        destination_city=requirements_data.get('destination_city', 'Singapore')
     )
 
-    # Combine all places and deduplicate by place_id
-    # Food results may contain places already in attraction results
+    # Deduplicate: remove food places that are already in attraction results
     existing_attraction_ids = {(p.get('id') or p.get('place_id')) for p in attraction_results}
     unique_food_results = [p for p in food_results if (p.get('id') or p.get('place_id')) not in existing_attraction_ids]
 
     duplicates_found = len(food_results) - len(unique_food_results)
     if duplicates_found > 0:
-        print(f"\n⚠ Found {duplicates_found} duplicate place(s) between attractions and food - removed duplicates")
+        logger.info(f"Removed {duplicates_found} duplicate(s) (food places already in attractions)")
 
-        # Backfill: search for additional unique food places to replace duplicates
-        if duplicates_found > 0 and not agent.check_timeout(start_time):
-            print(f"\n=== Backfilling {duplicates_found} food place(s) to replace duplicates ===")
-
-            # Collect all existing IDs (attractions + unique food)
-            all_existing_ids = existing_attraction_ids | {(p.get('id') or p.get('place_id')) for p in unique_food_results}
-
-            backfill_results = []
-            for cluster_name, cluster_loc in SINGAPORE_GEOCLUSTERS_POINTS.items():
-                if len(backfill_results) >= duplicates_found:
-                    break
-
-                # Get cluster-specific search params
-                cluster_params = FOOD_SEARCH_PARAMS_BY_CLUSTER.get(cluster_name, {
-                    "min_rating": 4.0,
-                    "initial_radius": 2000
-                })
-
-                print(f"\nBackfilling from {cluster_name}...")
-
-                # Search with lower rating and wider radius for backfill
-                backfill_min_rating = max(3.5, cluster_params["min_rating"] - 0.5)
-                backfill_radius = cluster_params["initial_radius"] + 1000
-
-                for food_term in food_search_terms:
-                    if len(backfill_results) >= duplicates_found:
-                        break
-
-                    results = agent.search_with_requirements(
-                        location=cluster_loc,
-                        included_types=food_term,
-                        min_rating=backfill_min_rating,
-                        max_results_needed=duplicates_found - len(backfill_results),
-                        search_type='food',
-                        excluded_types=food_excluded_types,
-                        destination_city=destination_city,
-                        initial_radius=backfill_radius
-                    )
-
-                    # Only add results not already in our collection
-                    new_backfill = [p for p in results if (p.get('id') or p.get('place_id')) not in all_existing_ids]
-
-                    if new_backfill:
-                        backfill_results.extend(new_backfill)
-                        # Update existing IDs to avoid duplicates in backfill
-                        all_existing_ids.update({(p.get('id') or p.get('place_id')) for p in new_backfill})
-                        print(f"  {cluster_name}/{food_term}: +{len(new_backfill)} backfilled")
-
-            if backfill_results:
-                unique_food_results.extend(backfill_results[:duplicates_found])
-                print(f"\n✓ Backfilled {len(backfill_results[:duplicates_found])} unique food place(s)")
-
+    # Combine attractions + unique food places
     all_places = attraction_results + unique_food_results
-    print(f"\n=== Total places collected: {len(all_places)} (attractions: {len(attraction_results)}, unique food: {len(unique_food_results)}) ===")
+    logger.info(f"\\n=== Total places collected: {len(all_places)} (attractions: {len(attraction_results)}, unique food: {len(unique_food_results)}) ===")
 
-    # Fetch place details from Google Places API
-    print(f"\n=== Fetching place details ===")
-    enrichments = fetch_place_enrichments(all_places, fetch_details=True)
+    # FIX #1 & #2: Format places with full enrichment (tags, descriptions, carbon, geo_cluster_id)
+    # The format_results method already calls _format_single_place which handles all enrichment
+    logger.info("\\n=== Formatting and Enrichment Phase ===")
+    formatted_places = agent.format_results(all_places)
 
-    # Format places with enriched data
-    print(f"\n=== Formatting {len(all_places)} places ===")
-    formatted_places = agent.format_results(all_places, enrichments)
+    # Log enrichment stats
+    cluster_distribution = {}
+    enriched_count = sum(1 for p in formatted_places if p.get('tags') and p.get('onsite_co2_kg') and p.get('geo_cluster_id'))
+    for p in formatted_places:
+        cid = p.get('geo_cluster_id', 'unknown')
+        cluster_distribution[cid] = cluster_distribution.get(cid, 0) + 1
+
+    logger.info(f"Formatted {len(formatted_places)} places with full enrichment")
+    logger.info(f"Enriched: {enriched_count}/{len(formatted_places)} places have tags, carbon scores, and geo clusters")
+    logger.info(f"Cluster distribution: {cluster_distribution}")
 
     elapsed = time.time() - start_time
 
-    # Generate retrieval ID with session_id and timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    retrieval_id = f"ret_{session_id}_{timestamp}" if session_id else f"ret_{timestamp}"
+    # Separate attractions from food places for detailed counts
+    attractions = [p for p in formatted_places if not agent._is_food_place(p)]
+    food_places = [p for p in formatted_places if agent._is_food_place(p)]
 
-    # Copy input data wholesale, then append retrieval section
-    result = input_data.copy()
-    result["retrieval"] = {
-        "retrieval_id": retrieval_id,
-        "time_elapsed": round(elapsed, 2),
-        "places_found": len(formatted_places),
-        "attractions_count": len(attraction_results),
-        "food_count": len(food_results),
-        "conditions": requirements,
-        "places_matrix": {
-            "nodes": formatted_places
-        }
+    # Calculate cluster distribution for attractions
+    attraction_clusters = {}
+    for place in attractions:
+        cluster = place.get('geo_cluster_id', 'unknown')
+        attraction_clusters[cluster] = attraction_clusters.get(cluster, 0) + 1
+
+    # Calculate cluster distribution for food
+    food_clusters = {}
+    for place in food_places:
+        cluster = place.get('geo_cluster_id', 'unknown')
+        food_clusters[cluster] = food_clusters.get(cluster, 0) + 1
+
+    # Build structured count objects with cluster breakdown
+    attraction_count_obj = {
+        "total": len(attractions),
+        "north": attraction_clusters.get('north', 0),
+        "northeast": attraction_clusters.get('northeast', 0),
+        "east": attraction_clusters.get('east', 0),
+        "west": attraction_clusters.get('west', 0),
+        "south": attraction_clusters.get('south', 0),
+        "central": attraction_clusters.get('central', 0),
+        "downtown": attraction_clusters.get('downtown', 0)
     }
 
-    # Save if output specified
-    if not output_file:
-        output_file = 'ResearchAgent/output.json'
+    food_count_obj = {
+        "total": len(food_places),
+        "north": food_clusters.get('north', 0),
+        "northeast": food_clusters.get('northeast', 0),
+        "east": food_clusters.get('east', 0),
+        "west": food_clusters.get('west', 0),
+        "south": food_clusters.get('south', 0),
+        "central": food_clusters.get('central', 0),
+        "downtown": food_clusters.get('downtown', 0)
+    }
 
-    with open(output_file, 'w') as f:
-        json.dump(result, f, indent=2)
+    # FIX #3: Add reasoning trace and requirements status to output
+    result = {
+        **input_data,
+        "retrieval": {
+            "retrieval_id": f"ret_{session_id or datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "time_elapsed": elapsed,
+            "places_found": len(formatted_places),
+            "attraction_count": attraction_count_obj,
+            "food_count": food_count_obj,
+            "conditions": {
+                "attractions_needed": requirements['attractions_needed'],
+                "food_places_needed": requirements['food_places_needed'],
+                "total_needed": requirements['total_needed'],
+                "pace_value": requirements['pace_value'],
+                "attraction_multiplier": requirements['attraction_multiplier'],
+                "food_multiplier": requirements['food_multiplier'],
+                "num_geo_clusters": requirements['num_geo_clusters']
+            },
+            "react_iterations": react_result['iterations'],
+            "react_requirements_met": react_result.get('requirements_met', False),
+            "react_reasoning": react_result.get('reasoning_trace', []),
+            "cluster_distribution": cluster_distribution
+        },
+        "places": formatted_places
+    }
 
-    # Print formatted summary
-    print(f"\n{'='*80}")
-    print(f"RESEARCH PROCESSING COMPLETE")
-    print(f"{'='*80}")
-    print(f"Attractions found: {len(attraction_results)}")
-    print(f"Food places found: {len(food_results)}")
-    print(f"Total places found: {len(formatted_places)}")
-    print(f"Processing time: {elapsed:.2f}s")
-    print(f"Output saved to: {output_file}")
-    print(f"{'='*80}\n")
+    if output_file:
+        with open(output_file, 'w') as f:
+            json.dump(result, f, indent=2)
 
-    logger.info(f"Found {len(formatted_places)} places, saved to {output_file}")
     return result
 
 
 # ## Main Execution
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) > 1:
         input_file = sys.argv[1]
         output_file = sys.argv[2] if len(sys.argv) > 2 else None

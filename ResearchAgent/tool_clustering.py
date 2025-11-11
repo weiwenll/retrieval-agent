@@ -50,66 +50,6 @@ def find_closest_cluster(lat: float, lng: float) -> str:
     
     return closest_cluster
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculate the Haversine distance between two points in kilometers.
-    More accurate for geographic calculations.
-    """
-    R = 6371  # Earth's radius in kilometers
-    
-    lat1_rad = math.radians(lat1)
-    lat2_rad = math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    
-    a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    
-    return R * c
-
-def find_closest_cluster_accurate(lat: float, lng: float) -> str:
-    """
-    Find the closest cluster using Haversine distance for better accuracy.
-    """
-    min_distance = float('inf')
-    closest_cluster = "unknown"
-    
-    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
-        # Calculate center of the cluster
-        center_lat = (bounds["lat_min"] + bounds["lat_max"]) / 2
-        center_lng = (bounds["lon_min"] + bounds["lon_max"]) / 2
-        
-        # Use Haversine distance for accuracy
-        distance = haversine_distance(lat, lng, center_lat, center_lng)
-        
-        if distance < min_distance:
-            min_distance = distance
-            closest_cluster = cluster_name
-    
-    return closest_cluster
-
-# Alternative: Use distance to nearest edge instead of center
-def find_closest_cluster_by_edge(lat: float, lng: float) -> str:
-    """
-    Find closest cluster by calculating distance to nearest edge of each boundary.
-    """
-    min_distance = float('inf')
-    closest_cluster = "unknown"
-    
-    for cluster_name, bounds in SINGAPORE_GEOCLUSTERS_BOUNDARIES.items():
-        # Calculate distance to nearest point on boundary rectangle
-        # If point is inside, distance is 0
-        lat_dist = max(0, bounds["lat_min"] - lat, lat - bounds["lat_max"])
-        lng_dist = max(0, bounds["lon_min"] - lng, lng - bounds["lon_max"])
-        
-        distance = math.sqrt(lat_dist**2 + lng_dist**2)
-        
-        if distance < min_distance:
-            min_distance = distance
-            closest_cluster = cluster_name
-    
-    return closest_cluster
-
 # Test function
 def test_clustering():
     """Test with known Singapore locations"""

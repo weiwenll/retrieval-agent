@@ -284,7 +284,7 @@ def check_processed_result(bucket_name: str, filename: str, agent_type: str):
         if status_data.get('status') != 'completed':
             logger.info(f"[check_processed_result] Status is '{status_data.get('status')}', not 'completed'. Returning None.")
             return None
-        logger.info(f"[check_processed_result] Status is 'completed' ✓")
+        logger.info(f"[check_processed_result] Status is 'completed'")
 
         # Step 3: Get output_key from status
         logger.info(f"[check_processed_result] Step 3: Getting output_key from status data")
